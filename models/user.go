@@ -15,6 +15,7 @@ type User struct {
 	Email     string    `json:"email"`
 	Password  string    `json:"-"` // Don't include in JSON responses
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type LoginRequest struct {
@@ -56,8 +57,8 @@ func CreateUser(username, email, password string) (*User, error) {
 		return nil, err
 	}
 
-	query := `INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, created_at`
-	err := database.DB.QueryRow(query, user.Username, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
+	query := `INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, created_at, updated_at`
+	err := database.DB.QueryRow(query, user.Username, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +69,8 @@ func CreateUser(username, email, password string) (*User, error) {
 // GetUserByUsername retrieves user by username
 func GetUserByUsername(username string) (*User, error) {
 	user := &User{}
-	query := `SELECT id, username, email, password, created_at FROM users WHERE username = $1`
-	err := database.DB.QueryRow(query, username).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt)
+	query := `SELECT id, username, email, password, created_at, updated_at FROM users WHERE username = $1`
+	err := database.DB.QueryRow(query, username).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -82,8 +83,8 @@ func GetUserByUsername(username string) (*User, error) {
 // GetUserByID retrieves user by ID
 func GetUserByID(id int) (*User, error) {
 	user := &User{}
-	query := `SELECT id, username, email, password, created_at FROM users WHERE id = $1`
-	err := database.DB.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt)
+	query := `SELECT id, username, email, password, created_at, updated_at FROM users WHERE id = $1`
+	err := database.DB.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

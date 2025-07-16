@@ -86,21 +86,20 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
-func Profile(w http.ResponseWriter, r *http.Request) {
-	// Get user from context (set by middleware)
-	claims := r.Context().Value("user").(*utils.Claims)
-
-	user, err := models.GetUserByID(claims.UserID)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if user == nil {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-
+// ForgotPassword handles password reset requests
+func ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement password reset functionality
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Password reset functionality coming soon",
+	})
+}
+
+// ResetPassword handles password reset confirmation
+func ResetPassword(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement password reset confirmation
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Password reset functionality coming soon",
+	})
 }

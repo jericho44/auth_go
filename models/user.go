@@ -29,6 +29,15 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+type UpdateProfileRequest struct {
+	Email string `json:"email"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 // HashPassword hashes the user's password
 func (u *User) HashPassword() error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
@@ -92,4 +101,35 @@ func GetUserByID(id int) (*User, error) {
 		return nil, err
 	}
 	return user, nil
+}
+
+// UpdateUserProfile updates user profile information
+func UpdateUserProfile(userID int, email string) (*User, error) {
+	query := `UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, email, created_at, updated_at`
+	user := &User{}
+	err := database.DB.QueryRow(query, email, userID).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpdateUserPassword updates user password
+func UpdateUserPassword(userID int, newPassword string) error {
+	// Hash the new password
+	user := &User{Password: newPassword}
+	if err := user.HashPassword(); err != nil {
+		return err
+	}
+
+	query := `UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := database.DB.Exec(query, user.Password, userID)
+	return err
+}
+
+// DeleteUser deletes a user account
+func DeleteUser(userID int) error {
+	query := `DELETE FROM users WHERE id = $1`
+	_, err := database.DB.Exec(query, userID)
+	return err
 }

@@ -55,6 +55,9 @@ func setupUserRoutes(api *mux.Router) {
 	user := api.PathPrefix("/user").Subrouter()
 	user.HandleFunc("/profile", handlers.Profile).Methods("GET")
 	user.HandleFunc("/profile", handlers.UpdateProfile).Methods("PUT")
+	user.HandleFunc("/change-password", handlers.ChangePassword).Methods("POST")
+	user.HandleFunc("/account", handlers.DeleteAccount).Methods("DELETE")
+	user.HandleFunc("/stats", handlers.UserStats).Methods("GET")
 
 	// Legacy route for backward compatibility
 	api.HandleFunc("/profile", handlers.Profile).Methods("GET")

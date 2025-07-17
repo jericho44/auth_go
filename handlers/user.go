@@ -4,27 +4,30 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"auth-jwt/controllers"
 	"auth-jwt/models"
 	"auth-jwt/utils"
 )
+
+var userController = controllers.NewUserController()
 
 func Profile(w http.ResponseWriter, r *http.Request) {
 	// Get user from context (set by middleware)
 	claims := r.Context().Value("user").(*utils.Claims)
 
-	user, err := models.GetUserByID(claims.UserID)
+	// Call controller
+	response, err := userController.GetProfile(claims.UserID)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if user == nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		status := http.StatusInternalServerError
+		if err.Error() == "user not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(response.User)
 }
 
 func UpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -36,29 +39,41 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update user profile
-	user, err := models.UpdateUserProfile(claims.UserID, req.Email)
+	// Call controller
+	response, err := userController.UpdateProfile(claims.UserID, req)
 	if err != nil {
-		http.Error(w, "Error updating profile", http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if err.Error() == "email is required" ||
+			err.Error() == "invalid email format" {
+			status = http.StatusBadRequest
+		} else if err.Error() == "user not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(response.User)
 }
 
 func DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value("user").(*utils.Claims)
 
-	err := models.DeleteUser(claims.UserID)
+	// Call controller
+	response, err := userController.DeleteAccount(claims.UserID)
 	if err != nil {
-		http.Error(w, "Error deleting account", http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if err.Error() == "user not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Account deleted successfully",
+		"message": response.Message,
 	})
 }
 
@@ -71,33 +86,43 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get current user
-	user, err := models.GetUserByID(claims.UserID)
+	// Call controller
+	response, err := userController.ChangePassword(claims.UserID, req)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if user == nil {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-
-	// Verify current password
-	if !user.CheckPassword(req.CurrentPassword) {
-		http.Error(w, "Current password is incorrect", http.StatusForbidden)
-		return
-	}
-
-	// Update password
-	err = models.UpdateUserPassword(claims.UserID, req.NewPassword)
-	if err != nil {
-		http.Error(w, "Error updating password", http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if err.Error() == "current password and new password are required" ||
+			err.Error() == "new password must be at least 6 characters long" ||
+			err.Error() == "new password must be different from current password" {
+			status = http.StatusBadRequest
+		} else if err.Error() == "user not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "current password is incorrect" {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Password changed successfully",
+		"message": response.Message,
 	})
+}
+
+func UserStats(w http.ResponseWriter, r *http.Request) {
+	claims := r.Context().Value("user").(*utils.Claims)
+
+	// Call controller
+	response, err := userController.GetUserStats(claims.UserID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "user not found" {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response.User)
 }

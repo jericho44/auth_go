@@ -1,33 +1,38 @@
 package repositories
 
 import (
-	"database/sql"
+	"errors"
 	"time"
 
 	"auth-jwt/models"
+
+	"gorm.io/gorm"
 )
 
 // UserRepositoryInterface defines the contract for user data operations
 type UserRepositoryInterface interface {
 	Create(user *models.User) error
-	GetByID(id int) (*models.User, error)
+	GetByID(id uint) (*models.User, error)
 	GetByUsername(username string) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
 	Update(user *models.User) error
-	UpdateProfile(userID int, email string) (*models.User, error)
-	UpdatePassword(userID int, hashedPassword string) error
-	Delete(userID int) error
+	UpdateProfile(userID uint, email string) (*models.User, error)
+	UpdatePassword(userID uint, hashedPassword string) error
+	Delete(userID uint) error
+
 	Exists(username, email string) (bool, error)
-	GetUserStats(userID int) (*models.UserStats, error)
+	GetUserStats(userID uint) (*models.UserStats, error)
+	List(offset, limit int) ([]*models.User, int64, error)
+	Search(query string, offset, limit int) ([]*models.User, int64, error)
 }
 
-// UserRepository implements UserRepositoryInterface
+// UserRepository implements UserRepositoryInterface using GORM
 type UserRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewUserRepository creates a new user repository instance
-func NewUserRepository(db *sql.DB) UserRepositoryInterface {
+func NewUserRepository(db *gorm.DB) UserRepositoryInterface {
 	return &UserRepository{
 		db: db,
 	}
@@ -35,117 +40,142 @@ func NewUserRepository(db *sql.DB) UserRepositoryInterface {
 
 // Create inserts a new user into the database
 func (ur *UserRepository) Create(user *models.User) error {
-	query := `INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, created_at, updated_at`
-	err := ur.db.QueryRow(query, user.Username, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
-	return err
+	result := ur.db.Create(user)
+	return result.Error
 }
 
 // GetByID retrieves a user by their ID
-func (ur *UserRepository) GetByID(id int) (*models.User, error) {
-	user := &models.User{}
-	query := `SELECT id, username, email, password, created_at, updated_at FROM users WHERE id = $1`
-	err := ur.db.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+func (ur *UserRepository) GetByID(id uint) (*models.User, error) {
+	var user models.User
+	result := ur.db.First(&user, id)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return user, nil
+	return &user, result.Error
 }
 
 // GetByUsername retrieves a user by their username
 func (ur *UserRepository) GetByUsername(username string) (*models.User, error) {
-	user := &models.User{}
-	query := `SELECT id, username, email, password, created_at, updated_at FROM users WHERE username = $1`
-	err := ur.db.QueryRow(query, username).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	var user models.User
+	result := ur.db.Where("username = ?", username).First(&user)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return user, nil
+	return &user, result.Error
 }
 
 // GetByEmail retrieves a user by their email
 func (ur *UserRepository) GetByEmail(email string) (*models.User, error) {
-	user := &models.User{}
-	query := `SELECT id, username, email, password, created_at, updated_at FROM users WHERE email = $1`
-	err := ur.db.QueryRow(query, email).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	var user models.User
+	result := ur.db.Where("email = ?", email).First(&user)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return user, nil
+	return &user, result.Error
 }
 
 // Update updates a user's information
 func (ur *UserRepository) Update(user *models.User) error {
-	query := `UPDATE users SET username = $1, email = $2, password = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`
-	_, err := ur.db.Exec(query, user.Username, user.Email, user.Password, user.ID)
-	return err
+	result := ur.db.Save(user)
+	return result.Error
 }
 
 // UpdateProfile updates a user's profile information
-func (ur *UserRepository) UpdateProfile(userID int, email string) (*models.User, error) {
-	query := `UPDATE users SET email = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, email, created_at, updated_at`
-	user := &models.User{}
-	err := ur.db.QueryRow(query, email, userID).Scan(&user.ID, &user.Username, &user.Email, &user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
+func (ur *UserRepository) UpdateProfile(userID uint, email string) (*models.User, error) {
+	var user models.User
+	result := ur.db.Model(&user).Where("id = ?", userID).Update("email", email)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	// Fetch updated user
+	if err := ur.db.First(&user, userID).Error; err != nil {
 		return nil, err
 	}
-	return user, nil
+
+	return &user, nil
 }
 
 // UpdatePassword updates a user's password
-func (ur *UserRepository) UpdatePassword(userID int, hashedPassword string) error {
-	query := `UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
-	_, err := ur.db.Exec(query, hashedPassword, userID)
-	return err
+func (ur *UserRepository) UpdatePassword(userID uint, hashedPassword string) error {
+	result := ur.db.Model(&models.User{}).Where("id = ?", userID).Update("password", hashedPassword)
+	return result.Error
 }
 
-// Delete removes a user from the database
-func (ur *UserRepository) Delete(userID int) error {
-	query := `DELETE FROM users WHERE id = $1`
-	_, err := ur.db.Exec(query, userID)
-	return err
+// Delete soft deletes a user (GORM soft delete)
+func (ur *UserRepository) Delete(userID uint) error {
+	result := ur.db.Delete(&models.User{}, userID)
+	return result.Error
 }
 
 // Exists checks if a user with the given username or email already exists
 func (ur *UserRepository) Exists(username, email string) (bool, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM users WHERE username = $1 OR email = $2`
-	err := ur.db.QueryRow(query, username, email).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
+	var count int64
+	result := ur.db.Model(&models.User{}).Where("username = ? OR email = ?", username, email).Count(&count)
+	return count > 0, result.Error
 }
 
 // GetUserStats retrieves user statistics
-func (ur *UserRepository) GetUserStats(userID int) (*models.UserStats, error) {
-	stats := &models.UserStats{}
-
+func (ur *UserRepository) GetUserStats(userID uint) (*models.UserStats, error) {
 	// Get basic user info
 	user, err := ur.GetByID(userID)
 	if err != nil || user == nil {
 		return nil, err
 	}
 
-	stats.UserID = user.ID
-	stats.Username = user.Username
-	stats.Email = user.Email
-	stats.CreatedAt = user.CreatedAt
-	stats.UpdatedAt = user.UpdatedAt
+	stats := &models.UserStats{
+		UserID:         user.ID,
+		Username:       user.Username,
+		Email:          user.Email,
+		CreatedAt:      user.CreatedAt,
+		UpdatedAt:      user.UpdatedAt,
+		AccountAgeDays: int(time.Since(user.CreatedAt).Hours() / 24),
+	}
 
-	// Calculate account age in days
-	stats.AccountAgeDays = int(time.Since(user.CreatedAt).Hours() / 24)
+	// Get login statistics
+	var loginCount int64
+	ur.db.Model(&models.LoginAttempt{}).Where("username = ? AND success = ?", user.Username, true).Count(&loginCount)
+	stats.LoginCount = int(loginCount)
 
-	// TODO: Add more statistics like login count, last login, etc.
-	// This would require additional tables for tracking user activity
+	// Get last successful login
+	var lastLogin models.LoginAttempt
+	if err := ur.db.Where("username = ? AND success = ?", user.Username, true).
+		Order("attempted_at DESC").First(&lastLogin).Error; err == nil {
+		stats.LastLoginAt = &lastLogin.AttemptedAt
+	}
 
 	return stats, nil
+}
+
+// List retrieves a paginated list of users
+func (ur *UserRepository) List(offset, limit int) ([]*models.User, int64, error) {
+	var users []*models.User
+	var total int64
+
+	// Get total count
+	if err := ur.db.Model(&models.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated results
+	result := ur.db.Offset(offset).Limit(limit).Find(&users)
+	return users, total, result.Error
+}
+
+// Search searches for users by username or email
+func (ur *UserRepository) Search(query string, offset, limit int) ([]*models.User, int64, error) {
+	var users []*models.User
+	var total int64
+
+	searchQuery := "%" + query + "%"
+	condition := ur.db.Where("username ILIKE ? OR email ILIKE ?", searchQuery, searchQuery)
+
+	// Get total count
+	if err := condition.Model(&models.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated results
+	result := condition.Offset(offset).Limit(limit).Find(&users)
+	return users, total, result.Error
 }

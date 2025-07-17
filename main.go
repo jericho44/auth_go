@@ -30,7 +30,13 @@ func main() {
 
 	// Initialize database
 	database.Connect(cfg)
-	defer database.DB.Close()
+
+	// Get underlying sql.DB for defer close
+	sqlDB, err := database.DB.DB()
+	if err != nil {
+		log.Fatal("Failed to get underlying sql.DB:", err)
+	}
+	defer sqlDB.Close()
 
 	// Initialize JWT with config
 	utils.InitJWT(cfg)

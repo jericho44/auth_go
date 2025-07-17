@@ -27,7 +27,7 @@ func NewUserController(userService services.UserServiceInterface) *UserControlle
 
 // GetProfile retrieves user profile business logic
 func (uc *UserController) GetProfile(userID int) (*UserResponse, error) {
-	user, err := uc.userService.GetUserByID(userID)
+	user, err := uc.userService.GetUserByID(uint(userID))
 	if err != nil {
 		return nil, errors.New("internal server error")
 	}
@@ -53,7 +53,7 @@ func (uc *UserController) UpdateProfile(userID int, req models.UpdateProfileRequ
 	}
 
 	// Update user profile through service
-	user, err := uc.userService.UpdateUserProfile(userID, req.Email)
+	user, err := uc.userService.UpdateUserProfile(uint(userID), req.Email)
 	if err != nil {
 		if err.Error() == "user not found" {
 			return nil, errors.New("user not found")
@@ -82,7 +82,7 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 	}
 
 	// Get current user to verify password
-	user, err := uc.userService.GetUserByID(userID)
+	user, err := uc.userService.GetUserByID(uint(userID))
 	if err != nil {
 		return nil, errors.New("internal server error")
 	}
@@ -97,7 +97,7 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 	}
 
 	// Update password through service
-	err = uc.userService.UpdateUserPassword(userID, req.NewPassword)
+	err = uc.userService.UpdateUserPassword(uint(userID), req.NewPassword)
 	if err != nil {
 		return nil, errors.New("error updating password")
 	}
@@ -110,7 +110,7 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 // DeleteAccount handles account deletion business logic
 func (uc *UserController) DeleteAccount(userID int) (*UserResponse, error) {
 	// Delete user account through service
-	err := uc.userService.DeleteUser(userID)
+	err := uc.userService.DeleteUser(uint(userID))
 	if err != nil {
 		if err.Error() == "user not found" {
 			return nil, errors.New("user not found")
@@ -125,7 +125,7 @@ func (uc *UserController) DeleteAccount(userID int) (*UserResponse, error) {
 
 // GetUserStats retrieves user statistics
 func (uc *UserController) GetUserStats(userID int) (*UserResponse, error) {
-	stats, err := uc.userService.GetUserStats(userID)
+	stats, err := uc.userService.GetUserStats(uint(userID))
 	if err != nil {
 		return nil, errors.New("error retrieving user stats")
 	}

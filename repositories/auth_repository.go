@@ -1,15 +1,17 @@
 package repositories
 
 import (
-	"database/sql"
+	"errors"
 	"time"
 
 	"auth-jwt/models"
+
+	"gorm.io/gorm"
 )
 
 // AuthRepositoryInterface defines the contract for authentication data operations
 type AuthRepositoryInterface interface {
-	CreatePasswordResetToken(userID int, token string, expiresAt time.Time) error
+	CreatePasswordResetToken(userID uint, token string, expiresAt time.Time) error
 	GetPasswordResetToken(token string) (*models.PasswordResetToken, error)
 	DeletePasswordResetToken(token string) error
 	CleanupExpiredTokens() error
@@ -17,64 +19,68 @@ type AuthRepositoryInterface interface {
 	GetRecentLoginAttempts(username string, since time.Time) (int, error)
 }
 
-// AuthRepository implements AuthRepositoryInterface
+// AuthRepository implements AuthRepositoryInterface using GORM
 type AuthRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewAuthRepository creates a new auth repository instance
-func NewAuthRepository(db *sql.DB) AuthRepositoryInterface {
+func NewAuthRepository(db *gorm.DB) AuthRepositoryInterface {
 	return &AuthRepository{
 		db: db,
 	}
 }
 
 // CreatePasswordResetToken stores a password reset token
-func (ar *AuthRepository) CreatePasswordResetToken(userID int, token string, expiresAt time.Time) error {
-	query := `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)`
-	_, err := ar.db.Exec(query, userID, token, expiresAt)
-	return err
+func (ar *AuthRepository) CreatePasswordResetToken(userID uint, token string, expiresAt time.Time) error {
+	resetToken := &models.PasswordResetToken{
+		UserID:    userID,
+		Token:     token,
+		ExpiresAt: expiresAt,
+	}
+	result := ar.db.Create(resetToken)
+	return result.Error
 }
 
 // GetPasswordResetToken retrieves a password reset token
 func (ar *AuthRepository) GetPasswordResetToken(token string) (*models.PasswordResetToken, error) {
-	resetToken := &models.PasswordResetToken{}
-	query := `SELECT id, user_id, token, expires_at, created_at FROM password_reset_tokens WHERE token = $1 AND expires_at > NOW()`
-	err := ar.db.QueryRow(query, token).Scan(&resetToken.ID, &resetToken.UserID, &resetToken.Token, &resetToken.ExpiresAt, &resetToken.CreatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	var resetToken models.PasswordResetToken
+	result := ar.db.Where("token = ? AND expires_at > ?", token, time.Now()).First(&resetToken)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return resetToken, nil
+	return &resetToken, result.Error
 }
 
 // DeletePasswordResetToken removes a password reset token
 func (ar *AuthRepository) DeletePasswordResetToken(token string) error {
-	query := `DELETE FROM password_reset_tokens WHERE token = $1`
-	_, err := ar.db.Exec(query, token)
-	return err
+	result := ar.db.Where("token = ?", token).Delete(&models.PasswordResetToken{})
+	return result.Error
 }
 
 // CleanupExpiredTokens removes expired password reset tokens
 func (ar *AuthRepository) CleanupExpiredTokens() error {
-	query := `DELETE FROM password_reset_tokens WHERE expires_at <= NOW()`
-	_, err := ar.db.Exec(query)
-	return err
+	result := ar.db.Where("expires_at <= ?", time.Now()).Delete(&models.PasswordResetToken{})
+	return result.Error
 }
 
 // CreateLoginAttempt logs a login attempt
 func (ar *AuthRepository) CreateLoginAttempt(username, ipAddress string, success bool) error {
-	query := `INSERT INTO login_attempts (username, ip_address, success, attempted_at) VALUES ($1, $2, $3, NOW())`
-	_, err := ar.db.Exec(query, username, ipAddress, success)
-	return err
+	attempt := &models.LoginAttempt{
+		Username:    username,
+		IPAddress:   ipAddress,
+		Success:     success,
+		AttemptedAt: time.Now(),
+	}
+	result := ar.db.Create(attempt)
+	return result.Error
 }
 
 // GetRecentLoginAttempts gets the number of recent login attempts for a username
 func (ar *AuthRepository) GetRecentLoginAttempts(username string, since time.Time) (int, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM login_attempts WHERE username = $1 AND attempted_at >= $2 AND success = false`
-	err := ar.db.QueryRow(query, username, since).Scan(&count)
-	return count, err
+	var count int64
+	result := ar.db.Model(&models.LoginAttempt{}).
+		Where("username = ? AND attempted_at >= ? AND success = ?", username, since, false).
+		Count(&count)
+	return int(count), result.Error
 }

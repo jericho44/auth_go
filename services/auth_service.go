@@ -46,16 +46,11 @@ func (as *AuthService) Register(username, email, password string) (*models.User,
 		return nil, errors.New("user already exists")
 	}
 
-	// Create user
+	// Create user (password will be hashed by GORM hook)
 	user := &models.User{
 		Username: username,
 		Email:    email,
 		Password: password,
-	}
-
-	// Hash password
-	if err := user.HashPassword(); err != nil {
-		return nil, err
 	}
 
 	// Save to database
@@ -83,7 +78,7 @@ func (as *AuthService) Login(username, password string) (string, error) {
 	}
 
 	// Generate JWT token
-	token, err := utils.GenerateToken(user.ID, user.Username)
+	token, err := utils.GenerateToken(int(user.ID), user.Username)
 	if err != nil {
 		return "", err
 	}
@@ -131,8 +126,14 @@ func (as *AuthService) ResetPassword(token, newPassword string) error {
 		return errors.New("invalid or expired token")
 	}
 
+	// Hash new password
+	tempUser := &models.User{Password: newPassword}
+	if err := tempUser.HashPassword(); err != nil {
+		return err
+	}
+
 	// Update user password
-	if err := as.userRepo.UpdatePassword(resetToken.UserID, newPassword); err != nil {
+	if err := as.userRepo.UpdatePassword(resetToken.UserID, tempUser.Password); err != nil {
 		return err
 	}
 

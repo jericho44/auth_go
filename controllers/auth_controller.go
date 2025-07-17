@@ -62,7 +62,7 @@ func (ac *AuthController) Register(req models.RegisterRequest) (*AuthResponse, e
 
 	return &AuthResponse{
 		Message: "User registered successfully",
-		UserID:  user.ID,
+		UserID:  int(user.ID),
 	}, nil
 }
 

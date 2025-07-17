@@ -1,6 +1,6 @@
 # JWT Authentication API
 
-A comprehensive Go-based authentication API with JWT tokens, built using clean architecture principles.
+A comprehensive Go-based authentication API with JWT tokens, built using clean architecture principles and modern Go practices.
 
 ## 🏗️ Architecture
 
@@ -66,7 +66,7 @@ GET    /api/user/stats          - Get user statistics
 ### Prerequisites
 
 - Go 1.21+
-- PostgreSQL
+- PostgreSQL 12+
 - Git
 
 ### Installation
@@ -96,16 +96,13 @@ GET    /api/user/stats          - Get user statistics
    # Edit .env with your settings
    ```
 
-5. **Run migrations**
+5. **Start the server**
 
-   ```bash
-   go run cmd/migrate.go -action=up
-   ```
-
-6. **Start the server**
    ```bash
    go run main.go
    ```
+
+   The application will automatically run database migrations on startup using GORM AutoMigrate.
 
 ## ⚙️ Configuration
 
@@ -169,6 +166,14 @@ CREATE TABLE login_attempts (
 
 ## 🧪 Testing
 
+The server will start on `http://localhost:8080` with the following output:
+
+```
+Connected to database successfully
+Server starting on :8080
+Swagger documentation available at: http://localhost:8080/swagger/
+```
+
 ### Manual Testing with cURL
 
 **Register a user:**
@@ -200,21 +205,20 @@ Visit `http://localhost:8080/swagger/` for interactive API testing.
 
 ## 🔧 Database Migrations
 
-### Run migrations
+The application uses GORM AutoMigrate which automatically handles database schema updates when you start the server. This ensures your database schema stays in sync with your Go models.
+
+### Manual Migration Commands (Optional)
+
+If you prefer manual control over migrations:
 
 ```bash
+# Run migrations
 go run cmd/migrate.go -action=up
-```
 
-### Rollback migrations
-
-```bash
+# Rollback migrations
 go run cmd/migrate.go -action=down
-```
 
-### Check migration status
-
-```bash
+# Check migration status
 go run cmd/migrate.go -action=version
 ```
 
@@ -262,7 +266,9 @@ auth-jwt/
 │   ├── auth_service.go
 │   └── user_service.go
 ├── utils/                 # Utilities
-│   └── jwt.go
+│   ├── jwt.go
+│   ├── response.go
+│   └── validation.go
 ├── .env                   # Environment variables
 ├── .gitignore
 ├── go.mod
@@ -274,21 +280,25 @@ auth-jwt/
 ## 🔒 Security Features
 
 - **Password Hashing**: bcrypt with salt
-- **JWT Tokens**: Configurable expiration
-- **Rate Limiting**: Login attempt protection
+- **JWT Tokens**: Configurable expiration with HS256 signing
+- **Rate Limiting**: Login attempt tracking and protection
 - **Input Validation**: Comprehensive request validation
-- **SQL Injection Protection**: Parameterized queries
+- **SQL Injection Protection**: GORM ORM with parameterized queries
 - **CORS**: Cross-origin request handling
+- **Authentication Middleware**: JWT token validation for protected routes
+- **Soft Deletes**: GORM soft delete for data integrity
 
 ## 🚀 Production Deployment
 
 1. **Environment Variables**: Use secure values for production
-2. **Database**: Use managed PostgreSQL service
-3. **JWT Secret**: Generate cryptographically secure secret
-4. **HTTPS**: Enable TLS/SSL
-5. **Rate Limiting**: Configure appropriate limits
-6. **Monitoring**: Add logging and monitoring
-7. **Backup**: Regular database backups
+2. **Database**: Use managed PostgreSQL service (AWS RDS, Google Cloud SQL, etc.)
+3. **JWT Secret**: Generate cryptographically secure secret (32+ characters)
+4. **HTTPS**: Enable TLS/SSL with reverse proxy (nginx, Cloudflare)
+5. **Rate Limiting**: Configure appropriate limits for your use case
+6. **Monitoring**: Add logging and monitoring (Prometheus, Grafana)
+7. **Backup**: Regular database backups and disaster recovery
+8. **Container**: Use Docker for consistent deployments
+9. **Load Balancing**: Use load balancer for high availability
 
 ## 📝 License
 

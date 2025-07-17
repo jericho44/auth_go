@@ -23,16 +23,16 @@ func Profile(w http.ResponseWriter, r *http.Request) {
 	// Call controller
 	response, err := userController.GetProfile(claims.UserID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "user not found" {
-			status = http.StatusNotFound
+		switch err.Error() {
+		case "user not found":
+			utils.NotFound(w, "User profile not found")
+		default:
+			utils.InternalServerError(w, "Failed to retrieve user profile")
 		}
-		http.Error(w, err.Error(), status)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response.User)
+	utils.Success(w, "User profile retrieved successfully", response.User)
 }
 
 func UpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -40,26 +40,25 @@ func UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	var req models.UpdateProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		utils.BadRequest(w, "Invalid request body", "Failed to parse JSON request")
 		return
 	}
 
 	// Call controller
 	response, err := userController.UpdateProfile(claims.UserID, req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "email is required" ||
-			err.Error() == "invalid email format" {
-			status = http.StatusBadRequest
-		} else if err.Error() == "user not found" {
-			status = http.StatusNotFound
+		switch err.Error() {
+		case "email is required", "invalid email format":
+			utils.ValidationError(w, err.Error(), "Please provide a valid email address")
+		case "user not found":
+			utils.NotFound(w, "User not found")
+		default:
+			utils.InternalServerError(w, "Failed to update profile")
 		}
-		http.Error(w, err.Error(), status)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response.User)
+	utils.Success(w, "Profile updated successfully", response.User)
 }
 
 func DeleteAccount(w http.ResponseWriter, r *http.Request) {
@@ -68,18 +67,16 @@ func DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	// Call controller
 	response, err := userController.DeleteAccount(claims.UserID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "user not found" {
-			status = http.StatusNotFound
+		switch err.Error() {
+		case "user not found":
+			utils.NotFound(w, "User not found")
+		default:
+			utils.InternalServerError(w, "Failed to delete account")
 		}
-		http.Error(w, err.Error(), status)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": response.Message,
-	})
+	utils.Success(w, response.Message, nil)
 }
 
 func ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -87,31 +84,29 @@ func ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	var req models.ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		utils.BadRequest(w, "Invalid request body", "Failed to parse JSON request")
 		return
 	}
 
 	// Call controller
 	response, err := userController.ChangePassword(claims.UserID, req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "current password and new password are required" ||
-			err.Error() == "new password must be at least 6 characters long" ||
-			err.Error() == "new password must be different from current password" {
-			status = http.StatusBadRequest
-		} else if err.Error() == "user not found" {
-			status = http.StatusNotFound
-		} else if err.Error() == "current password is incorrect" {
-			status = http.StatusForbidden
+		switch err.Error() {
+		case "current password and new password are required",
+			"new password must be at least 6 characters long",
+			"new password must be different from current password":
+			utils.ValidationError(w, err.Error(), "Please check your password requirements")
+		case "user not found":
+			utils.NotFound(w, "User not found")
+		case "current password is incorrect":
+			utils.Forbidden(w, "Current password is incorrect")
+		default:
+			utils.InternalServerError(w, "Failed to change password")
 		}
-		http.Error(w, err.Error(), status)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": response.Message,
-	})
+	utils.Success(w, response.Message, nil)
 }
 
 func UserStats(w http.ResponseWriter, r *http.Request) {
@@ -120,14 +115,14 @@ func UserStats(w http.ResponseWriter, r *http.Request) {
 	// Call controller
 	response, err := userController.GetUserStats(claims.UserID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "user not found" {
-			status = http.StatusNotFound
+		switch err.Error() {
+		case "user not found":
+			utils.NotFound(w, "User not found")
+		default:
+			utils.InternalServerError(w, "Failed to retrieve user statistics")
 		}
-		http.Error(w, err.Error(), status)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response.User)
+	utils.Success(w, "User statistics retrieved successfully", response.Stats)
 }

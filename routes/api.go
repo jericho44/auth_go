@@ -2,9 +2,10 @@ package routes
 
 import (
 	"auth-jwt/middleware"
-	"encoding/json"
 	"net/http"
 	"time"
+
+	"auth-jwt/utils"
 
 	"github.com/gorilla/mux"
 )
@@ -35,12 +36,12 @@ func (ar *APIRoutes) RegisterRoutes(r *mux.Router) {
 	// Health check endpoint (no auth required)
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		healthData := map[string]interface{}{
 			"status":    "healthy",
 			"timestamp": time.Now().UTC(),
 			"version":   "1.0.0",
-		})
+			"uptime":    time.Since(time.Now()).String(), // This would be calculated from app start time
+		}
+		utils.Success(w, "Service is healthy", healthData)
 	}).Methods("GET")
 }

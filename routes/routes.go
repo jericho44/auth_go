@@ -32,6 +32,8 @@ func setupAuthRoutes(r *mux.Router) {
 	auth := r.PathPrefix("/auth").Subrouter()
 	auth.HandleFunc("/register", handlers.Register).Methods("POST")
 	auth.HandleFunc("/login", handlers.Login).Methods("POST")
+	auth.HandleFunc("/forgot-password", handlers.ForgotPassword).Methods("POST")
+	auth.HandleFunc("/reset-password", handlers.ResetPassword).Methods("POST")
 
 	// Legacy routes for backward compatibility
 	r.HandleFunc("/register", handlers.Register).Methods("POST")
@@ -40,11 +42,15 @@ func setupAuthRoutes(r *mux.Router) {
 
 // setupAPIRoutes configures protected API routes
 func setupAPIRoutes(r *mux.Router) {
+	// Add global middleware
+	r.Use(middleware.RequestIDMiddleware)
+	r.Use(middleware.ResponseHeadersMiddleware)
+	r.Use(middleware.CORSMiddleware)
+	r.Use(middleware.LoggingMiddleware)
+
 	// Protected API routes
 	api := r.PathPrefix("/api").Subrouter()
 	api.Use(middleware.JWTMiddleware)
-	api.Use(middleware.CORSMiddleware)
-	api.Use(middleware.LoggingMiddleware)
 
 	// User routes
 	setupUserRoutes(api)

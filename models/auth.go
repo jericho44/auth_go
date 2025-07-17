@@ -42,6 +42,17 @@ type UserStats struct {
 	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
 }
 
+// ForgotPasswordRequest represents a password reset request
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email" example:"user@example.com"`
+}
+
+// ResetPasswordRequest represents a password reset confirmation request
+type ResetPasswordRequest struct {
+	Token       string `json:"token" validate:"required" example:"reset-token-here"`
+	NewPassword string `json:"new_password" validate:"required,min=6" example:"newpassword123"`
+}
+
 // TableName specifies the table name for GORM
 func (PasswordResetToken) TableName() string {
 	return "password_reset_tokens"

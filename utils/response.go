@@ -23,6 +23,14 @@ type APIError struct {
 	Details string `json:"details,omitempty"`
 }
 
+// ErrorResponse represents error response for Swagger documentation
+type ErrorResponse struct {
+	Success   bool      `json:"success" example:"false"`
+	Message   string    `json:"message" example:"Error message"`
+	Error     *APIError `json:"error"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // Meta represents metadata for API responses
 type Meta struct {
 	RequestID string `json:"request_id,omitempty"`

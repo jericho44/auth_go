@@ -16,6 +16,7 @@ func SetupRoutes() *mux.Router {
 	setupSwaggerRoutes(r)
 	setupAuthRoutes(r)
 	setupAPIRoutes(r)
+	setupApiPublicRoutes(r)
 
 	return r
 }
@@ -40,7 +41,7 @@ func setupAuthRoutes(r *mux.Router) {
 	r.HandleFunc("/login", handlers.Login).Methods("POST")
 }
 
-// setupAPIRoutes configures protected API routes
+// setupAPIRoutes configures API routes (both public and protected)
 func setupAPIRoutes(r *mux.Router) {
 	// Add global middleware
 	r.Use(middleware.RequestIDMiddleware)
@@ -48,12 +49,30 @@ func setupAPIRoutes(r *mux.Router) {
 	r.Use(middleware.CORSMiddleware)
 	r.Use(middleware.LoggingMiddleware)
 
-	// Protected API routes
+	// Create API router
 	api := r.PathPrefix("/api").Subrouter()
-	api.Use(middleware.JWTMiddleware)
+
+	// Setup public file routes directly on the API router (no authentication required)
+	// These routes will be accessible without authentication
+	// api.HandleFunc("/files/public", handlers.GetPublicFiles).Methods("GET")
+	// api.HandleFunc("/files/download/{filename}", handlers.DownloadFile).Methods("GET")
+	// api.HandleFunc("/files/type/{type}", handlers.GetFilesByType).Methods("GET")
+	// api.HandleFunc("/files/{id:[0-9]+}", handlers.GetFile).Methods("GET")
+
+	// Create protected subrouter for routes that require authentication
+	protected := api.PathPrefix("").Subrouter()
+	protected.Use(middleware.JWTMiddleware)
 
 	// User routes
-	setupUserRoutes(api)
+	setupUserRoutes(protected)
+
+	// Protected file routes
+	files := protected.PathPrefix("/files").Subrouter()
+	files.HandleFunc("/upload", handlers.UploadSingleFile).Methods("POST")
+	files.HandleFunc("/upload-multiple", handlers.UploadMultipleFiles).Methods("POST")
+	files.HandleFunc("/my", handlers.GetUserFiles).Methods("GET")
+	files.HandleFunc("/{id:[0-9]+}", handlers.UpdateFile).Methods("PUT")
+	files.HandleFunc("/{id:[0-9]+}", handlers.DeleteFile).Methods("DELETE")
 }
 
 // setupUserRoutes configures user-related routes
@@ -67,4 +86,14 @@ func setupUserRoutes(api *mux.Router) {
 
 	// Legacy route for backward compatibility
 	api.HandleFunc("/profile", handlers.Profile).Methods("GET")
+}
+
+func setupApiPublicRoutes(r *mux.Router) {
+
+	// Public authentication routes
+	api := r.PathPrefix("/").Subrouter()
+	api.HandleFunc("/files/public", handlers.GetPublicFiles).Methods("GET")
+	api.HandleFunc("/files/download/{filename}", handlers.DownloadFile).Methods("GET")
+	api.HandleFunc("/files/type/{type}", handlers.GetFilesByType).Methods("GET")
+	api.HandleFunc("/files/{id:[0-9]+}", handlers.GetFile).Methods("GET")
 }

@@ -1,0 +1,1043 @@
+basePath: /
+definitions:
+  controllers.AuthResponse:
+    properties:
+      message:
+        type: string
+      token:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  controllers.FileControllerResponse:
+    properties:
+      file:
+        $ref: '#/definitions/models.FileUploadResponse'
+      files:
+        $ref: '#/definitions/models.FileListResponse'
+      message:
+        type: string
+      multi_files:
+        $ref: '#/definitions/models.MultiFileUploadResponse'
+    type: object
+  controllers.UserResponse:
+    properties:
+      message:
+        type: string
+      stats:
+        $ref: '#/definitions/models.UserStats'
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
+  models.ChangePasswordRequest:
+    properties:
+      current_password:
+        type: string
+      new_password:
+        minLength: 6
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
+  models.FileListResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/models.FileUploadResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  models.FileUploadResponse:
+    properties:
+      created_at:
+        type: string
+      download_url:
+        type: string
+      file_name:
+        type: string
+      file_size:
+        type: integer
+      file_type:
+        type: string
+      id:
+        type: integer
+      is_public:
+        type: boolean
+      mime_type:
+        type: string
+      original_name:
+        type: string
+    type: object
+  models.ForgotPasswordRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+    required:
+    - email
+    type: object
+  models.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  models.MultiFileUploadResponse:
+    properties:
+      failed_files:
+        items:
+          type: string
+        type: array
+      failure_count:
+        type: integer
+      files:
+        items:
+          $ref: '#/definitions/models.FileUploadResponse'
+        type: array
+      success_count:
+        type: integer
+    type: object
+  models.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  models.ResetPasswordRequest:
+    properties:
+      new_password:
+        example: newpassword123
+        minLength: 6
+        type: string
+      token:
+        example: reset-token-here
+        type: string
+    required:
+    - new_password
+    - token
+    type: object
+  models.UpdateFileRequest:
+    properties:
+      is_public:
+        type: boolean
+    type: object
+  models.UpdateProfileRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  models.UserStats:
+    properties:
+      account_age_days:
+        type: integer
+      created_at:
+        type: string
+      email:
+        type: string
+      last_login_at:
+        type: string
+      login_count:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  utils.APIError:
+    properties:
+      code:
+        type: string
+      details:
+        type: string
+      message:
+        type: string
+    type: object
+  utils.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/utils.APIError'
+      message:
+        example: Error message
+        type: string
+      success:
+        example: false
+        type: boolean
+      timestamp:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: JWT Authentication API with user registration and login
+  title: Authentication API
+  version: "1.0"
+paths:
+  /api/files/{id}:
+    delete:
+      description: Permanently delete a file owned by the authenticated user. This
+        removes both the file record and the physical file from storage.
+      parameters:
+      - description: File ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File deleted successfully
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: Bad request - invalid file ID
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "403":
+          description: Forbidden - you can only delete your own files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: File not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to delete file
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete file
+      tags:
+      - File Management
+    get:
+      description: Retrieve detailed information about a specific file including metadata,
+        download URL, and file properties
+      parameters:
+      - description: File ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File information retrieved successfully
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: Bad request - invalid file ID
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: File not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Get file information by ID
+      tags:
+      - File Management
+    put:
+      consumes:
+      - application/json
+      description: Update file properties such as making it public or private. Only
+        the file owner can update their files.
+      parameters:
+      - description: File ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: File update data - currently supports changing public/private
+          status
+        in: body
+        name: file
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateFileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: File updated successfully
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: Bad request - invalid file ID or request body
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "403":
+          description: Forbidden - you can only update your own files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: File not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to update file
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update file properties
+      tags:
+      - File Management
+  /api/files/my:
+    get:
+      description: Retrieve a paginated list of files uploaded by the authenticated
+        user, including both public and private files
+      parameters:
+      - default: 1
+        description: Page number for pagination
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User files retrieved successfully with pagination info
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user's uploaded files
+      tags:
+      - File Management
+  /api/files/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        Upload a single file for the authenticated user with comprehensive validation and metadata generation
+
+        **File Requirements:**
+        - Maximum size: 10MB per file
+        - Supported formats: .jpg, .jpeg, .png, .gif, .pdf, .doc, .docx, .txt, .zip, .mp4, .mp3
+        - Files are private by default (can be made public later via PUT /api/files/{id})
+
+        **Upload Process:**
+        1. File validation (size, type, format)
+        2. Unique filename generation (timestamp + random hash)
+        3. File storage in uploads directory
+        4. Database record creation with metadata
+        5. Automatic file type classification
+
+        **Response includes:**
+        - File ID and complete metadata
+        - Download URL for accessing the file
+        - Automatic file type classification (image, document, video, audio, archive, other)
+        - Original filename and generated unique filename
+        - File size, MIME type, and creation timestamp
+      parameters:
+      - description: 'File to upload (max 10MB). Use form field name ''file''. Example:
+          curl -F ''file=@image.jpg'''
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: File uploaded successfully with metadata
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: Bad request - file too large (>10MB), invalid type, or no file
+            provided
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token in Authorization
+            header
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to save file or create database
+            record
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a single file
+      tags:
+      - File Upload
+  /api/files/upload-multiple:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        Upload multiple files in a single request. Each file is validated individually, allowing partial success scenarios.
+
+        **Batch Upload Limits:**
+        - Maximum 10 files per request
+        - Total size limit: 50MB
+        - Each file max: 10MB
+        - Same format restrictions as single upload
+
+        **Response includes:**
+        - List of successfully uploaded files
+        - Success/failure counts
+        - Details of any failed uploads
+
+        **Use Cases:**
+        - Photo gallery uploads
+        - Document batch processing
+        - Media file collections
+      parameters:
+      - description: Multiple files to upload (use 'files' as field name)
+        in: formData
+        name: files
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Files upload completed with detailed results
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: Bad request - too many files, files too large, or no files
+            provided
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to process files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload multiple files
+      tags:
+      - File Upload
+  /api/user/account:
+    delete:
+      description: |-
+        Permanently delete the authenticated user's account and all associated data
+
+        **Deletion Process:**
+        1. Verify user authentication and ownership
+        2. Remove all user-associated data (files, records, etc.)
+        3. Permanently delete user account from database
+        4. Invalidate all existing JWT tokens for the user
+
+        **Warning:**
+        - This action is irreversible
+        - All user data will be permanently lost
+        - All uploaded files will be deleted
+
+        **Authentication Required:**
+        - Valid JWT token must be provided in Authorization header
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account deleted successfully
+          schema:
+            $ref: '#/definitions/controllers.UserResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to delete account
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete user account
+      tags:
+      - User Management
+  /api/user/change-password:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Change the authenticated user's password with current password verification
+
+        **Password Requirements:**
+        - Current password must be provided for verification
+        - New password must be at least 6 characters long
+        - New password must be different from current password
+        - New password will be securely hashed with bcrypt
+
+        **Change Process:**
+        1. Verify current password is correct
+        2. Validate new password meets requirements
+        3. Hash new password securely
+        4. Update password in database
+        5. Optionally invalidate existing JWT tokens
+
+        **Authentication Required:**
+        - Valid JWT token must be provided in Authorization header
+      parameters:
+      - description: Password change data
+        in: body
+        name: password
+        required: true
+        schema:
+          $ref: '#/definitions/models.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password changed successfully
+          schema:
+            $ref: '#/definitions/controllers.UserResponse'
+        "400":
+          description: Bad request - validation errors or password requirements not
+            met
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "403":
+          description: Forbidden - current password is incorrect
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to change password
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change user password
+      tags:
+      - User Management
+  /api/user/profile:
+    get:
+      description: |-
+        Retrieve the authenticated user's profile information including username, email, and account details
+
+        **Profile Information:**
+        - User ID and username
+        - Email address
+        - Account creation and last update timestamps
+        - Account status and verification details
+
+        **Authentication Required:**
+        - Valid JWT token must be provided in Authorization header
+        - Token format: "Bearer {your-jwt-token}"
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile retrieved successfully
+          schema:
+            $ref: '#/definitions/controllers.UserResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: User profile not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve profile
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - User Management
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Update the authenticated user's profile information such as email address
+
+        **Updatable Fields:**
+        - Email address (must be valid format and unique)
+        - Additional profile fields as supported
+
+        **Update Process:**
+        1. Validate new email format and uniqueness
+        2. Update user record in database
+        3. Return updated profile information
+
+        **Authentication Required:**
+        - Valid JWT token must be provided in Authorization header
+      parameters:
+      - description: Profile update data
+        in: body
+        name: profile
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated successfully
+          schema:
+            $ref: '#/definitions/controllers.UserResponse'
+        "400":
+          description: Bad request - invalid email format or validation errors
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Conflict - email already exists
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to update profile
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - User Management
+  /api/user/stats:
+    get:
+      description: |-
+        Retrieve comprehensive statistics about the authenticated user's account and activity
+
+        **Statistics Include:**
+        - Total number of uploaded files
+        - Total storage space used
+        - Account creation date and activity metrics
+        - File type breakdown (images, documents, etc.)
+        - Public vs private file counts
+
+        **Use Cases:**
+        - Dashboard displays
+        - Storage usage monitoring
+        - Account activity tracking
+        - Usage analytics
+
+        **Authentication Required:**
+        - Valid JWT token must be provided in Authorization header
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User statistics retrieved successfully
+          schema:
+            $ref: '#/definitions/controllers.UserResponse'
+        "401":
+          description: Unauthorized - invalid or missing JWT token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve statistics
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user statistics
+      tags:
+      - User Management
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Send password reset token to user's email address
+
+        **Process:**
+        1. Validate email exists in system
+        2. Generate secure reset token
+        3. Store token with expiration (typically 1 hour)
+        4. Send reset email with token
+
+        **Security:**
+        - Tokens expire after 1 hour
+        - One-time use tokens
+        - Rate limiting to prevent abuse
+      parameters:
+      - description: Email address for password reset
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/models.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset email sent
+          schema:
+            $ref: '#/definitions/controllers.AuthResponse'
+        "400":
+          description: Bad request - invalid email format
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Email not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to send email
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Request password reset
+      tags:
+      - Authentication
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Authenticate user with username/email and password to receive JWT token
+
+        **Login Options:**
+        - Login with username OR email
+        - Password must match the registered password
+
+        **Security Features:**
+        - Rate limiting for failed attempts
+        - Password verification with bcrypt
+        - JWT token generation with configurable expiration
+
+        **Response includes:**
+        - JWT access token for API authentication
+        - User profile information
+        - Token expiration timestamp
+      parameters:
+      - description: User login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            $ref: '#/definitions/controllers.AuthResponse'
+        "400":
+          description: Bad request - missing credentials
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid credentials
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: User login
+      tags:
+      - Authentication
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Register a new user account with username, email, and password
+
+        **Registration Requirements:**
+        - Username: minimum 3 characters, alphanumeric only
+        - Email: valid email format, must be unique in system
+        - Password: minimum 6 characters, will be securely hashed
+
+        **Registration Process:**
+        1. Input validation (format, length, uniqueness checks)
+        2. Password hashing with bcrypt for security
+        3. User account creation in database
+        4. Automatic JWT token generation for immediate login
+
+        **Response includes:**
+        - JWT access token for authentication
+        - User profile information (without password)
+        - Token expiration information
+      parameters:
+      - description: User registration data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User registered successfully with JWT token
+          schema:
+            $ref: '#/definitions/controllers.AuthResponse'
+        "400":
+          description: Bad request - validation errors
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Conflict - username or email already exists
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to create user account
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: User registration
+      tags:
+      - Authentication
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Reset user password using the token received via email
+
+        **Process:**
+        1. Validate reset token (exists, not expired, not used)
+        2. Validate new password requirements
+        3. Hash new password with bcrypt
+        4. Update user password
+        5. Invalidate reset token
+
+        **Requirements:**
+        - Valid reset token from forgot-password request
+        - New password minimum 6 characters
+        - Token must not be expired or already used
+      parameters:
+      - description: Reset token and new password
+        in: body
+        name: reset
+        required: true
+        schema:
+          $ref: '#/definitions/models.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password reset successful
+          schema:
+            $ref: '#/definitions/controllers.AuthResponse'
+        "400":
+          description: Bad request - invalid token or password requirements
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Invalid or expired reset token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Reset password with token
+      tags:
+      - Authentication
+  /files/download/{filename}:
+    get:
+      description: Download a file by its unique filename. The file will be served
+        with its original name and appropriate content type headers.
+      parameters:
+      - description: Unique filename (e.g., 1642678901_a1b2c3d4.jpg)
+        in: path
+        minLength: 1
+        name: filename
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File content with appropriate headers for download
+          schema:
+            type: file
+        "400":
+          description: Bad request - invalid or missing filename
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: File not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to serve file
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Download file
+      tags:
+      - File Download
+  /files/public:
+    get:
+      description: Retrieve a paginated list of all files marked as public by users.
+        No authentication required.
+      parameters:
+      - default: 1
+        description: Page number for pagination
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Public files retrieved successfully
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "500":
+          description: Internal server error - failed to retrieve public files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Get public files
+      tags:
+      - File Browse
+  /files/type/{type}:
+    get:
+      description: Retrieve public files filtered by file type. Useful for creating
+        galleries or browsing specific content types.
+      parameters:
+      - description: File type filter
+        enum:
+        - image
+        - document
+        - video
+        - audio
+        - archive
+        - other
+        in: path
+        name: type
+        required: true
+        type: string
+      - default: 1
+        description: Page number for pagination
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Files retrieved successfully by type
+          schema:
+            $ref: '#/definitions/controllers.FileControllerResponse'
+        "400":
+          description: 'Bad request - invalid file type (valid: image, document, video,
+            audio, archive, other)'
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error - failed to retrieve files
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Get files by type
+      tags:
+      - Public/File Browse
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

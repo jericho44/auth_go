@@ -57,6 +57,7 @@ func AutoMigrate() error {
 		&models.User{},
 		&models.PasswordResetToken{},
 		&models.LoginAttempt{},
+		&models.File{},
 	)
 
 	if err != nil {

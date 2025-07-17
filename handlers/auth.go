@@ -8,7 +8,12 @@ import (
 	"auth-jwt/models"
 )
 
-var authController = controllers.NewAuthController()
+var authController *controllers.AuthController
+
+// SetAuthController sets the auth controller instance
+func SetAuthController(controller *controllers.AuthController) {
+	authController = controller
+}
 
 func Register(w http.ResponseWriter, r *http.Request) {
 	var req models.RegisterRequest

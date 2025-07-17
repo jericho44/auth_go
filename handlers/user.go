@@ -9,7 +9,12 @@ import (
 	"auth-jwt/utils"
 )
 
-var userController = controllers.NewUserController()
+var userController *controllers.UserController
+
+// SetUserController sets the user controller instance
+func SetUserController(controller *controllers.UserController) {
+	userController = controller
+}
 
 func Profile(w http.ResponseWriter, r *http.Request) {
 	// Get user from context (set by middleware)

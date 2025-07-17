@@ -5,12 +5,13 @@ import (
 	"strings"
 
 	"auth-jwt/models"
+	"auth-jwt/services"
 	"auth-jwt/utils"
-
-	"github.com/lib/pq"
 )
 
-type AuthController struct{}
+type AuthController struct {
+	authService services.AuthServiceInterface
+}
 
 type AuthResponse struct {
 	Message string `json:"message,omitempty"`
@@ -19,8 +20,10 @@ type AuthResponse struct {
 }
 
 // NewAuthController creates a new auth controller instance
-func NewAuthController() *AuthController {
-	return &AuthController{}
+func NewAuthController(authService services.AuthServiceInterface) *AuthController {
+	return &AuthController{
+		authService: authService,
+	}
 }
 
 // Register handles user registration business logic
@@ -39,23 +42,20 @@ func (ac *AuthController) Register(req models.RegisterRequest) (*AuthResponse, e
 		return nil, errors.New("password must be at least 6 characters long")
 	}
 
-	if !isValidEmail(req.Email) {
+	if !utils.IsValidEmail(req.Email) {
 		return nil, errors.New("invalid email format")
 	}
 
-	// Create new user
-	user, err := models.CreateUser(req.Username, req.Email, req.Password)
+	// Register user through service
+	user, err := ac.authService.Register(req.Username, req.Email, req.Password)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			if pqErr.Code == "23505" { // unique_violation
-				if strings.Contains(pqErr.Detail, "username") {
-					return nil, errors.New("username already exists")
-				} else if strings.Contains(pqErr.Detail, "email") {
-					return nil, errors.New("email already exists")
-				} else {
-					return nil, errors.New("user already exists")
-				}
+		if strings.Contains(err.Error(), "already exists") {
+			if strings.Contains(strings.ToLower(err.Error()), "username") {
+				return nil, errors.New("username already exists")
+			} else if strings.Contains(strings.ToLower(err.Error()), "email") {
+				return nil, errors.New("email already exists")
 			}
+			return nil, errors.New("user already exists")
 		}
 		return nil, errors.New("error creating user")
 	}
@@ -73,26 +73,21 @@ func (ac *AuthController) Login(req models.LoginRequest) (*AuthResponse, error) 
 		return nil, errors.New("username and password are required")
 	}
 
-	// Find user
-	user, err := models.GetUserByUsername(req.Username)
+	// TODO: Add IP address from request context for rate limiting
+	// if err := ac.authService.ValidateLoginAttempts(req.Username, ipAddress); err != nil {
+	//     return nil, err
+	// }
+
+	// Login through service
+	token, err := ac.authService.Login(req.Username, req.Password)
 	if err != nil {
-		return nil, errors.New("internal server error")
+		// TODO: Record failed login attempt
+		// ac.authService.RecordLoginAttempt(req.Username, ipAddress, false)
+		return nil, err
 	}
 
-	if user == nil {
-		return nil, errors.New("invalid credentials")
-	}
-
-	// Check password
-	if !user.CheckPassword(req.Password) {
-		return nil, errors.New("invalid credentials")
-	}
-
-	// Generate JWT token
-	token, err := utils.GenerateToken(user.ID, user.Username)
-	if err != nil {
-		return nil, errors.New("error generating token")
-	}
+	// TODO: Record successful login attempt
+	// ac.authService.RecordLoginAttempt(req.Username, ipAddress, true)
 
 	return &AuthResponse{
 		Token: token,
@@ -101,31 +96,50 @@ func (ac *AuthController) Login(req models.LoginRequest) (*AuthResponse, error) 
 
 // ForgotPassword handles password reset request business logic
 func (ac *AuthController) ForgotPassword(email string) (*AuthResponse, error) {
-	// TODO: Implement password reset functionality
-	// 1. Validate email exists
-	// 2. Generate reset token
-	// 3. Send email with reset link
-	// 4. Store reset token with expiration
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+
+	if !utils.IsValidEmail(email) {
+		return nil, errors.New("invalid email format")
+	}
+
+	// Generate reset token through service
+	token, err := ac.authService.GeneratePasswordResetToken(email)
+	if err != nil {
+		if err.Error() == "user not found" {
+			// Don't reveal if email exists or not for security
+			return &AuthResponse{
+				Message: "If the email exists, a password reset link has been sent",
+			}, nil
+		}
+		return nil, errors.New("error generating reset token")
+	}
+
+	// TODO: Send email with reset token
+	// In a real application, you would send an email here
 
 	return &AuthResponse{
-		Message: "Password reset functionality coming soon",
+		Message: "Password reset token generated: " + token, // Remove this in production
 	}, nil
 }
 
 // ResetPassword handles password reset confirmation business logic
 func (ac *AuthController) ResetPassword(token, newPassword string) (*AuthResponse, error) {
-	// TODO: Implement password reset confirmation
-	// 1. Validate reset token
-	// 2. Check token expiration
-	// 3. Update user password
-	// 4. Invalidate reset token
+	if token == "" || newPassword == "" {
+		return nil, errors.New("token and new password are required")
+	}
+
+	if len(newPassword) < 6 {
+		return nil, errors.New("new password must be at least 6 characters long")
+	}
+
+	// Reset password through service
+	if err := ac.authService.ResetPassword(token, newPassword); err != nil {
+		return nil, err
+	}
 
 	return &AuthResponse{
-		Message: "Password reset functionality coming soon",
+		Message: "Password reset successfully",
 	}, nil
-}
-
-// isValidEmail performs basic email validation
-func isValidEmail(email string) bool {
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
 }

@@ -4,23 +4,30 @@ import (
 	"errors"
 
 	"auth-jwt/models"
+	"auth-jwt/services"
+	"auth-jwt/utils"
 )
 
-type UserController struct{}
+type UserController struct {
+	userService services.UserServiceInterface
+}
 
 type UserResponse struct {
-	Message string       `json:"message,omitempty"`
-	User    *models.User `json:"user,omitempty"`
+	Message string            `json:"message,omitempty"`
+	User    *models.User      `json:"user,omitempty"`
+	Stats   *models.UserStats `json:"stats,omitempty"`
 }
 
 // NewUserController creates a new user controller instance
-func NewUserController() *UserController {
-	return &UserController{}
+func NewUserController(userService services.UserServiceInterface) *UserController {
+	return &UserController{
+		userService: userService,
+	}
 }
 
 // GetProfile retrieves user profile business logic
 func (uc *UserController) GetProfile(userID int) (*UserResponse, error) {
-	user, err := models.GetUserByID(userID)
+	user, err := uc.userService.GetUserByID(userID)
 	if err != nil {
 		return nil, errors.New("internal server error")
 	}
@@ -41,23 +48,16 @@ func (uc *UserController) UpdateProfile(userID int, req models.UpdateProfileRequ
 		return nil, errors.New("email is required")
 	}
 
-	if !isValidEmail(req.Email) {
+	if !utils.IsValidEmail(req.Email) {
 		return nil, errors.New("invalid email format")
 	}
 
-	// Check if user exists
-	existingUser, err := models.GetUserByID(userID)
+	// Update user profile through service
+	user, err := uc.userService.UpdateUserProfile(userID, req.Email)
 	if err != nil {
-		return nil, errors.New("internal server error")
-	}
-
-	if existingUser == nil {
-		return nil, errors.New("user not found")
-	}
-
-	// Update user profile
-	user, err := models.UpdateUserProfile(userID, req.Email)
-	if err != nil {
+		if err.Error() == "user not found" {
+			return nil, errors.New("user not found")
+		}
 		return nil, errors.New("error updating profile")
 	}
 
@@ -81,8 +81,8 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 		return nil, errors.New("new password must be different from current password")
 	}
 
-	// Get current user
-	user, err := models.GetUserByID(userID)
+	// Get current user to verify password
+	user, err := uc.userService.GetUserByID(userID)
 	if err != nil {
 		return nil, errors.New("internal server error")
 	}
@@ -96,8 +96,8 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 		return nil, errors.New("current password is incorrect")
 	}
 
-	// Update password
-	err = models.UpdateUserPassword(userID, req.NewPassword)
+	// Update password through service
+	err = uc.userService.UpdateUserPassword(userID, req.NewPassword)
 	if err != nil {
 		return nil, errors.New("error updating password")
 	}
@@ -109,19 +109,12 @@ func (uc *UserController) ChangePassword(userID int, req models.ChangePasswordRe
 
 // DeleteAccount handles account deletion business logic
 func (uc *UserController) DeleteAccount(userID int) (*UserResponse, error) {
-	// Check if user exists
-	user, err := models.GetUserByID(userID)
+	// Delete user account through service
+	err := uc.userService.DeleteUser(userID)
 	if err != nil {
-		return nil, errors.New("internal server error")
-	}
-
-	if user == nil {
-		return nil, errors.New("user not found")
-	}
-
-	// Delete user account
-	err = models.DeleteUser(userID)
-	if err != nil {
+		if err.Error() == "user not found" {
+			return nil, errors.New("user not found")
+		}
 		return nil, errors.New("error deleting account")
 	}
 
@@ -130,21 +123,14 @@ func (uc *UserController) DeleteAccount(userID int) (*UserResponse, error) {
 	}, nil
 }
 
-// GetUserStats retrieves user statistics (example of additional business logic)
+// GetUserStats retrieves user statistics
 func (uc *UserController) GetUserStats(userID int) (*UserResponse, error) {
-	user, err := models.GetUserByID(userID)
+	stats, err := uc.userService.GetUserStats(userID)
 	if err != nil {
-		return nil, errors.New("internal server error")
+		return nil, errors.New("error retrieving user stats")
 	}
-
-	if user == nil {
-		return nil, errors.New("user not found")
-	}
-
-	// Add additional stats logic here
-	// For example: login count, last login, account age, etc.
 
 	return &UserResponse{
-		User: user,
+		Stats: stats,
 	}, nil
 }

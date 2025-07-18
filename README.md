@@ -29,15 +29,26 @@ This project follows clean architecture with clear separation of concerns:
 - ✅ Account deletion
 - ✅ User statistics
 
+### File Management
+
+- ✅ Single and multiple file uploads
+- ✅ File type validation and size limits
+- ✅ Public/private file sharing
+- ✅ File metadata management
+- ✅ Secure file storage and retrieval
+
 ### Technical Features
 
 - ✅ Database migrations
+- ✅ **Database transactions** for data consistency
 - ✅ Swagger API documentation
 - ✅ CORS middleware
 - ✅ Request logging
 - ✅ Environment-based configuration
 - ✅ Repository pattern for data access
 - ✅ Dependency injection
+- ✅ Clean architecture implementation
+- ✅ ACID compliance with transaction support
 
 ## 📋 API Endpoints
 
@@ -53,12 +64,30 @@ GET  /swagger/               - API documentation
 
 ### Protected Endpoints (Require JWT token)
 
+#### User Management
+
 ```
 GET    /api/user/profile        - Get user profile
 PUT    /api/user/profile        - Update user profile
 POST   /api/user/change-password - Change password
 DELETE /api/user/account        - Delete account
 GET    /api/user/stats          - Get user statistics
+GET    /api/users               - List all users (paginated)
+GET    /api/users/search        - Search users
+```
+
+#### File Management
+
+```
+POST   /api/files/upload        - Upload single file
+POST   /api/files/upload/multiple - Upload multiple files
+GET    /api/files               - Get user's files (paginated)
+GET    /api/files/public        - Get public files
+GET    /api/files/:id           - Get file details
+PUT    /api/files/:id           - Update file metadata
+DELETE /api/files/:id           - Delete file
+GET    /api/files/download/:filename - Download file
+GET    /api/files/type/:type    - Get files by type
 ```
 
 ## 🛠️ Setup
@@ -164,6 +193,25 @@ CREATE TABLE login_attempts (
 );
 ```
 
+### Files Table
+
+```sql
+CREATE TABLE files (
+    id SERIAL PRIMARY KEY,
+    original_name VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255) UNIQUE NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size BIGINT NOT NULL,
+    mime_type VARCHAR(100),
+    file_type VARCHAR(50),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    is_public BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+```
+
 ## 🧪 Testing
 
 The server will start on `http://localhost:8080` with the following output:
@@ -222,6 +270,73 @@ go run cmd/migrate.go -action=down
 go run cmd/migrate.go -action=version
 ```
 
+## 🔄 Database Transactions
+
+This application implements comprehensive database transaction support to ensure data consistency and ACID compliance.
+
+### Transaction Features
+
+- **Atomicity**: All operations in a transaction succeed or fail together
+- **Consistency**: Database remains in a valid state after each transaction
+- **Isolation**: Concurrent transactions don't interfere with each other
+- **Durability**: Committed transactions are permanently saved
+
+### Transactional Operations
+
+#### Repository Level
+
+All write operations use transactions:
+
+- User creation, updates, and deletion
+- Authentication token management
+- File record management
+- Login attempt logging
+
+#### Service Level
+
+Complex operations spanning multiple database calls:
+
+- **Password Reset**: Atomically updates password and deletes reset token
+- **File Upload**: Ensures file record creation matches file system storage
+- **User Registration**: Validates and creates user with proper rollback
+
+### Example Usage
+
+```go
+// Repository level transaction (automatic)
+func (ur *UserRepository) Create(user *models.User) error {
+    return ur.db.Transaction(func(tx *gorm.DB) error {
+        result := tx.Create(user)
+        return result.Error
+    })
+}
+
+// Service level transaction (complex operations)
+func (as *AuthService) ResetPassword(token, newPassword string) error {
+    db := as.getUserDB()
+    return db.Transaction(func(tx *gorm.DB) error {
+        // Update password
+        if err := tx.Model(&models.User{}).Where("id = ?", userID).Update("password", hashedPassword).Error; err != nil {
+            return err
+        }
+
+        // Delete token
+        if err := tx.Where("token = ?", token).Delete(&models.PasswordResetToken{}).Error; err != nil {
+            return err
+        }
+
+        return nil
+    })
+}
+```
+
+### Benefits
+
+- **Data Integrity**: Prevents partial updates that could corrupt data
+- **Error Recovery**: Automatic rollback on any operation failure
+- **Concurrent Safety**: Proper isolation between simultaneous operations
+- **Audit Trail**: Complete operation success/failure tracking
+
 ## 📁 Project Structure
 
 ```
@@ -241,6 +356,7 @@ auth-jwt/
 │   └── swagger.json
 ├── handlers/              # HTTP handlers
 │   ├── auth.go
+│   ├── file.go
 │   └── user.go
 ├── middleware/            # HTTP middleware
 │   ├── auth.go
@@ -253,18 +369,23 @@ auth-jwt/
 │   └── 000002_create_auth_tables.down.sql
 ├── models/                # Data models
 │   ├── auth.go
+│   ├── file.go
 │   └── user.go
 ├── repositories/          # Data access layer
 │   ├── auth_repository.go
+│   ├── file_repository.go
 │   └── user_repository.go
 ├── routes/                # Route definitions
 │   ├── api.go
 │   ├── auth.go
+│   ├── file.go
 │   ├── routes.go
 │   └── user.go
 ├── services/              # Business services
 │   ├── auth_service.go
+│   ├── file_service.go
 │   └── user_service.go
+├── uploads/               # File upload directory
 ├── utils/                 # Utilities
 │   ├── jwt.go
 │   ├── response.go
@@ -287,6 +408,8 @@ auth-jwt/
 - **CORS**: Cross-origin request handling
 - **Authentication Middleware**: JWT token validation for protected routes
 - **Soft Deletes**: GORM soft delete for data integrity
+- **File Upload Security**: File type validation, size limits, and secure storage
+- **Database Transactions**: ACID compliance for data consistency
 
 ## 🚀 Production Deployment
 
@@ -311,6 +434,33 @@ This project is licensed under the MIT License.
 3. Make your changes
 4. Add tests
 5. Submit a pull request
+
+## 📚 Additional Documentation
+
+- **[API Examples](docs/api_examples.md)** - Comprehensive API usage examples with cURL and JavaScript
+- **[Adding New Features](docs/adding_new_features.md)** - Step-by-step guide for extending the application
+- **[Transaction Implementation](docs/transaction_implementation.md)** - Database transaction architecture and usage
+- **[File Upload Guide](docs/file_upload_guide.md)** - File management system documentation
+- **[GORM Integration](docs/gorm_integration.md)** - Database ORM patterns and best practices
+
+## 🔍 Health Check
+
+The application includes a health check endpoint for monitoring:
+
+```bash
+curl -X GET http://localhost:8080/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "database": "connected",
+  "version": "1.0.0"
+}
+```
 
 ## 📞 Support
 

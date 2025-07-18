@@ -1,28 +1,26 @@
 # Adding New Features Guide
 
-This guide explains how to add new features to the JWT Authentication API following the established clean architecture patterns.
+This guide explains how to add new features to the JWT Authentication API following the established clean architecture patterns and transaction support.
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 The project follows clean architecture with these layers:
 
-- **Models** - Data structures and domain entities
-- **Repositories** - Data access layer (database operations)
-- **Services** - Business logic and application rules
-- **Controllers** - Request validation and response formatting
-- **Handlers** - HTTP request/response handling
-- **Routes** - URL routing and middleware setup
+1. **Models** - Data structures and domain entities
+2. **Repositories** - Data access layer with transaction support
+3. **Services** - Business logic layer
+4. **Controllers** - HTTP request/response handling
+5. **Handlers** - Route handlers
+6. **Routes** - Route definitions
 
-## 📋 Step-by-Step Process
+## Step-by-Step Feature Addition
 
 ### 1. Define the Model
 
-Create or update models in the `models/` directory.
-
-**Example: Adding a "Posts" feature**
+Create or update models in `models/` directory:
 
 ```go
-// models/post.go
+// models/example.go
 package models
 
 import (
@@ -30,36 +28,32 @@ import (
     "gorm.io/gorm"
 )
 
-type Post struct {
+type Example struct {
     ID        uint           `json:"id" gorm:"primaryKey"`
-    Title     string         `json:"title" gorm:"not null;size:200"`
-    Content   string         `json:"content" gorm:"type:text"`
-    UserID    uint           `json:"user_id" gorm:"not null;index"`
-    User      User           `json:"user" gorm:"foreignKey:UserID"`
-    Published bool           `json:"published" gorm:"default:false"`
+    Name      string         `json:"name" gorm:"not null"`
+    UserID    uint           `json:"user_id" gorm:"not null"`
+    User      User           `json:"user,omitempty" gorm:"foreignKey:UserID"`
+    IsActive  bool           `json:"is_active" gorm:"default:true"`
     CreatedAt time.Time      `json:"created_at"`
     UpdatedAt time.Time      `json:"updated_at"`
-    DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+    DeletedAt gorm.DeletedAt `json:"-" gorm:"index"` // Soft delete support
 }
 
 // Request/Response DTOs
-type CreatePostRequest struct {
-    Title   string `json:"title" validate:"required,min=1,max=200"`
-    Content string `json:"content" validate:"required"`
+type CreateExampleRequest struct {
+    Name string `json:"name" validate:"required,min=3,max=100"`
 }
 
-type UpdatePostRequest struct {
-    Title     *string `json:"title,omitempty" validate:"omitempty,min=1,max=200"`
-    Content   *string `json:"content,omitempty"`
-    Published *bool   `json:"published,omitempty"`
+type UpdateExampleRequest struct {
+    Name     *string `json:"name,omitempty" validate:"omitempty,min=3,max=100"`
+    IsActive *bool   `json:"is_active,omitempty"`
 }
 
-type PostResponse struct {
+type ExampleResponse struct {
     ID        uint      `json:"id"`
-    Title     string    `json:"title"`
-    Content   string    `json:"content"`
-    Published bool      `json:"published"`
-    Author    string    `json:"author"`
+    Name      string    `json:"name"`
+    UserID    uint      `json:"user_id"`
+    IsActive  bool      `json:"is_active"`
     CreatedAt time.Time `json:"created_at"`
     UpdatedAt time.Time `json:"updated_at"`
 }
@@ -67,10 +61,10 @@ type PostResponse struct {
 
 ### 2. Create Repository Interface and Implementation
 
-Define data access methods in the `repositories/` directory.
+Create repository in `repositories/` directory:
 
 ```go
-// repositories/post_repository.go
+// repositories/example_repository.go
 package repositories
 
 import (
@@ -78,70 +72,76 @@ import (
     "gorm.io/gorm"
 )
 
-type PostRepositoryInterface interface {
-    Create(post *models.Post) error
-    GetByID(id uint) (*models.Post, error)
-    GetByUserID(userID uint, limit, offset int) ([]*models.Post, error)
-    Update(post *models.Post) error
+type ExampleRepositoryInterface interface {
+    Create(example *models.Example) error
+    GetByID(id uint) (*models.Example, error)
+    GetByUserID(userID uint, limit, offset int) ([]*models.Example, error)
+    Update(example *models.Example) error
     Delete(id uint) error
-    GetPublished(limit, offset int) ([]*models.Post, error)
+    CountByUserID(userID uint) (int64, error)
 }
 
-type PostRepository struct {
+type ExampleRepository struct {
     db *gorm.DB
 }
 
-func NewPostRepository(db *gorm.DB) PostRepositoryInterface {
-    return &PostRepository{db: db}
+func NewExampleRepository(db *gorm.DB) ExampleRepositoryInterface {
+    return &ExampleRepository{db: db}
 }
 
-func (r *PostRepository) Create(post *models.Post) error {
-    return r.db.Create(post).Error
+// Create with transaction support
+func (r *ExampleRepository) Create(example *models.Example) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Create(example).Error
+    })
 }
 
-func (r *PostRepository) GetByID(id uint) (*models.Post, error) {
-    var post models.Post
-    err := r.db.Preload("User").First(&post, id).Error
+// GetByID - read operations don't need transactions
+func (r *ExampleRepository) GetByID(id uint) (*models.Example, error) {
+    var example models.Example
+    err := r.db.Preload("User").First(&example, id).Error
     if err != nil {
         return nil, err
     }
-    return &post, nil
+    return &example, nil
 }
 
-func (r *PostRepository) GetByUserID(userID uint, limit, offset int) ([]*models.Post, error) {
-    var posts []*models.Post
+func (r *ExampleRepository) GetByUserID(userID uint, limit, offset int) ([]*models.Example, error) {
+    var examples []*models.Example
     err := r.db.Where("user_id = ?", userID).
         Limit(limit).Offset(offset).
         Order("created_at DESC").
-        Find(&posts).Error
-    return posts, err
+        Find(&examples).Error
+    return examples, err
 }
 
-func (r *PostRepository) Update(post *models.Post) error {
-    return r.db.Save(post).Error
+// Update with transaction support
+func (r *ExampleRepository) Update(example *models.Example) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Save(example).Error
+    })
 }
 
-func (r *PostRepository) Delete(id uint) error {
-    return r.db.Delete(&models.Post{}, id).Error
+// Delete with transaction support
+func (r *ExampleRepository) Delete(id uint) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Delete(&models.Example{}, id).Error
+    })
 }
 
-func (r *PostRepository) GetPublished(limit, offset int) ([]*models.Post, error) {
-    var posts []*models.Post
-    err := r.db.Where("published = ?", true).
-        Preload("User").
-        Limit(limit).Offset(offset).
-        Order("created_at DESC").
-        Find(&posts).Error
-    return posts, err
+func (r *ExampleRepository) CountByUserID(userID uint) (int64, error) {
+    var count int64
+    err := r.db.Model(&models.Example{}).Where("user_id = ?", userID).Count(&count).Error
+    return count, err
 }
 ```
 
 ### 3. Create Service Layer
 
-Implement business logic in the `services/` directory.
+Create service in `services/` directory:
 
 ```go
-// services/post_service.go
+// services/example_service.go
 package services
 
 import (
@@ -150,494 +150,400 @@ import (
     "auth-jwt/repositories"
 )
 
-type PostServiceInterface interface {
-    CreatePost(userID uint, req models.CreatePostRequest) (*models.Post, error)
-    GetPost(id uint) (*models.PostResponse, error)
-    GetUserPosts(userID uint, page, limit int) ([]*models.PostResponse, error)
-    UpdatePost(id, userID uint, req models.UpdatePostRequest) (*models.PostResponse, error)
-    DeletePost(id, userID uint) error
-    GetPublishedPosts(page, limit int) ([]*models.PostResponse, error)
+type ExampleServiceInterface interface {
+    CreateExample(userID uint, req models.CreateExampleRequest) (*models.ExampleResponse, error)
+    GetExample(id, userID uint) (*models.ExampleResponse, error)
+    GetUserExamples(userID uint, page, limit int) ([]*models.ExampleResponse, int64, error)
+    UpdateExample(id, userID uint, req models.UpdateExampleRequest) (*models.ExampleResponse, error)
+    DeleteExample(id, userID uint) error
 }
 
-type PostService struct {
-    postRepo repositories.PostRepositoryInterface
-    userRepo repositories.UserRepositoryInterface
+type ExampleService struct {
+    exampleRepo repositories.ExampleRepositoryInterface
+    userRepo    repositories.UserRepositoryInterface
 }
 
-func NewPostService(postRepo repositories.PostRepositoryInterface, userRepo repositories.UserRepositoryInterface) PostServiceInterface {
-    return &PostService{
-        postRepo: postRepo,
-        userRepo: userRepo,
+func NewExampleService(exampleRepo repositories.ExampleRepositoryInterface, userRepo repositories.UserRepositoryInterface) ExampleServiceInterface {
+    return &ExampleService{
+        exampleRepo: exampleRepo,
+        userRepo:    userRepo,
     }
 }
 
-func (s *PostService) CreatePost(userID uint, req models.CreatePostRequest) (*models.Post, error) {
+func (s *ExampleService) CreateExample(userID uint, req models.CreateExampleRequest) (*models.ExampleResponse, error) {
     // Verify user exists
     user, err := s.userRepo.GetByID(userID)
     if err != nil || user == nil {
         return nil, errors.New("user not found")
     }
 
-    post := &models.Post{
-        Title:   req.Title,
-        Content: req.Content,
-        UserID:  userID,
+    // Create example
+    example := &models.Example{
+        Name:   req.Name,
+        UserID: userID,
     }
 
-    if err := s.postRepo.Create(post); err != nil {
-        return nil, errors.New("failed to create post")
+    // Repository handles transaction
+    if err := s.exampleRepo.Create(example); err != nil {
+        return nil, errors.New("failed to create example")
     }
 
-    return post, nil
+    return s.convertToResponse(example), nil
 }
 
-func (s *PostService) GetPost(id uint) (*models.PostResponse, error) {
-    post, err := s.postRepo.GetByID(id)
+func (s *ExampleService) GetExample(id, userID uint) (*models.ExampleResponse, error) {
+    example, err := s.exampleRepo.GetByID(id)
     if err != nil {
-        return nil, errors.New("post not found")
-    }
-
-    return &models.PostResponse{
-        ID:        post.ID,
-        Title:     post.Title,
-        Content:   post.Content,
-        Published: post.Published,
-        Author:    post.User.Username,
-        CreatedAt: post.CreatedAt,
-        UpdatedAt: post.UpdatedAt,
-    }, nil
-}
-
-func (s *PostService) UpdatePost(id, userID uint, req models.UpdatePostRequest) (*models.PostResponse, error) {
-    post, err := s.postRepo.GetByID(id)
-    if err != nil {
-        return nil, errors.New("post not found")
+        return nil, errors.New("example not found")
     }
 
     // Check ownership
-    if post.UserID != userID {
+    if example.UserID != userID {
         return nil, errors.New("unauthorized")
     }
 
-    // Update fields if provided
-    if req.Title != nil {
-        post.Title = *req.Title
-    }
-    if req.Content != nil {
-        post.Content = *req.Content
-    }
-    if req.Published != nil {
-        post.Published = *req.Published
-    }
-
-    if err := s.postRepo.Update(post); err != nil {
-        return nil, errors.New("failed to update post")
-    }
-
-    return &models.PostResponse{
-        ID:        post.ID,
-        Title:     post.Title,
-        Content:   post.Content,
-        Published: post.Published,
-        Author:    post.User.Username,
-        CreatedAt: post.CreatedAt,
-        UpdatedAt: post.UpdatedAt,
-    }, nil
+    return s.convertToResponse(example), nil
 }
 
-func (s *PostService) DeletePost(id, userID uint) error {
-    post, err := s.postRepo.GetByID(id)
+func (s *ExampleService) GetUserExamples(userID uint, page, limit int) ([]*models.ExampleResponse, int64, error) {
+    offset := (page - 1) * limit
+    examples, err := s.exampleRepo.GetByUserID(userID, limit, offset)
     if err != nil {
-        return errors.New("post not found")
+        return nil, 0, errors.New("failed to retrieve examples")
+    }
+
+    total, err := s.exampleRepo.CountByUserID(userID)
+    if err != nil {
+        return nil, 0, errors.New("failed to count examples")
+    }
+
+    var responses []*models.ExampleResponse
+    for _, example := range examples {
+        responses = append(responses, s.convertToResponse(example))
+    }
+
+    return responses, total, nil
+}
+
+func (s *ExampleService) UpdateExample(id, userID uint, req models.UpdateExampleRequest) (*models.ExampleResponse, error) {
+    example, err := s.exampleRepo.GetByID(id)
+    if err != nil {
+        return nil, errors.New("example not found")
     }
 
     // Check ownership
-    if post.UserID != userID {
+    if example.UserID != userID {
+        return nil, errors.New("unauthorized")
+    }
+
+    // Update fields
+    if req.Name != nil {
+        example.Name = *req.Name
+    }
+    if req.IsActive != nil {
+        example.IsActive = *req.IsActive
+    }
+
+    // Repository handles transaction
+    if err := s.exampleRepo.Update(example); err != nil {
+        return nil, errors.New("failed to update example")
+    }
+
+    return s.convertToResponse(example), nil
+}
+
+func (s *ExampleService) DeleteExample(id, userID uint) error {
+    example, err := s.exampleRepo.GetByID(id)
+    if err != nil {
+        return errors.New("example not found")
+    }
+
+    // Check ownership
+    if example.UserID != userID {
         return errors.New("unauthorized")
     }
 
-    return s.postRepo.Delete(id)
+    // Repository handles transaction
+    return s.exampleRepo.Delete(id)
 }
 
-// Additional methods...
+// Helper method
+func (s *ExampleService) convertToResponse(example *models.Example) *models.ExampleResponse {
+    return &models.ExampleResponse{
+        ID:        example.ID,
+        Name:      example.Name,
+        UserID:    example.UserID,
+        IsActive:  example.IsActive,
+        CreatedAt: example.CreatedAt,
+        UpdatedAt: example.UpdatedAt,
+    }
+}
 ```
 
 ### 4. Create Controller
 
-Handle request validation and response formatting in `controllers/`.
+Create controller in `controllers/` directory:
 
 ```go
-// controllers/post_controller.go
+// controllers/example_controller.go
 package controllers
 
 import (
-    "errors"
-    "auth-jwt/models"
-    "auth-jwt/services"
-    "auth-jwt/utils"
-)
-
-type PostController struct {
-    postService services.PostServiceInterface
-}
-
-type PostControllerResponse struct {
-    Message string                 `json:"message,omitempty"`
-    Post    *models.PostResponse   `json:"post,omitempty"`
-    Posts   []*models.PostResponse `json:"posts,omitempty"`
-}
-
-func NewPostController(postService services.PostServiceInterface) *PostController {
-    return &PostController{
-        postService: postService,
-    }
-}
-
-func (pc *PostController) CreatePost(userID int, req models.CreatePostRequest) (*PostControllerResponse, error) {
-    // Validate request
-    if err := utils.ValidateStruct(req); err != nil {
-        return nil, errors.New("validation failed: " + err.Error())
-    }
-
-    post, err := pc.postService.CreatePost(uint(userID), req)
-    if err != nil {
-        return nil, err
-    }
-
-    return &PostControllerResponse{
-        Message: "Post created successfully",
-        Post: &models.PostResponse{
-            ID:        post.ID,
-            Title:     post.Title,
-            Content:   post.Content,
-            Published: post.Published,
-            CreatedAt: post.CreatedAt,
-            UpdatedAt: post.UpdatedAt,
-        },
-    }, nil
-}
-
-func (pc *PostController) GetPost(id int) (*PostControllerResponse, error) {
-    post, err := pc.postService.GetPost(uint(id))
-    if err != nil {
-        return nil, err
-    }
-
-    return &PostControllerResponse{
-        Post: post,
-    }, nil
-}
-
-func (pc *PostController) UpdatePost(id, userID int, req models.UpdatePostRequest) (*PostControllerResponse, error) {
-    // Validate request
-    if err := utils.ValidateStruct(req); err != nil {
-        return nil, errors.New("validation failed: " + err.Error())
-    }
-
-    post, err := pc.postService.UpdatePost(uint(id), uint(userID), req)
-    if err != nil {
-        return nil, err
-    }
-
-    return &PostControllerResponse{
-        Message: "Post updated successfully",
-        Post:    post,
-    }, nil
-}
-
-func (pc *PostController) DeletePost(id, userID int) (*PostControllerResponse, error) {
-    err := pc.postService.DeletePost(uint(id), uint(userID))
-    if err != nil {
-        return nil, err
-    }
-
-    return &PostControllerResponse{
-        Message: "Post deleted successfully",
-    }, nil
-}
-```
-
-### 5. Create HTTP Handlers
-
-Handle HTTP requests and responses in `handlers/`.
-
-```go
-// handlers/post.go
-package handlers
-
-import (
-    "encoding/json"
     "net/http"
     "strconv"
 
-    "auth-jwt/controllers"
     "auth-jwt/models"
+    "auth-jwt/services"
     "auth-jwt/utils"
 
-    "github.com/gorilla/mux"
+    "github.com/gin-gonic/gin"
 )
 
-var postController *controllers.PostController
-
-func SetPostController(controller *controllers.PostController) {
-    postController = controller
+type ExampleController struct {
+    exampleService services.ExampleServiceInterface
 }
 
-// @Summary Create a new post
-// @Description Create a new post for the authenticated user
-// @Tags posts
+func NewExampleController(exampleService services.ExampleServiceInterface) *ExampleController {
+    return &ExampleController{
+        exampleService: exampleService,
+    }
+}
+
+// @Summary Create example
+// @Description Create a new example
+// @Tags examples
 // @Accept json
 // @Produce json
-// @Param post body models.CreatePostRequest true "Post data"
-// @Success 201 {object} controllers.PostControllerResponse
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 401 {object} utils.ErrorResponse
+// @Param request body models.CreateExampleRequest true "Example data"
+// @Success 201 {object} utils.Response{data=models.ExampleResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 401 {object} utils.Response
 // @Security BearerAuth
-// @Router /api/posts [post]
-func CreatePost(w http.ResponseWriter, r *http.Request) {
-    claims := r.Context().Value("user").(*utils.Claims)
+// @Router /api/examples [post]
+func (ctrl *ExampleController) CreateExample(c *gin.Context) {
+    userID := c.GetUint("user_id")
 
-    var req models.CreatePostRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        utils.BadRequest(w, "Invalid request body", "Failed to parse JSON request")
+    var req models.CreateExampleRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        utils.ErrorResponse(c, http.StatusBadRequest, "Invalid request data", err)
         return
     }
 
-    response, err := postController.CreatePost(claims.UserID, req)
+    // Validate request
+    if err := utils.ValidateStruct(req); err != nil {
+        utils.ValidationErrorResponse(c, err)
+        return
+    }
+
+    example, err := ctrl.exampleService.CreateExample(userID, req)
     if err != nil {
-        switch err.Error() {
-        case "user not found":
-            utils.NotFound(w, "User not found")
-        default:
-            if contains(err.Error(), "validation failed") {
-                utils.ValidationError(w, err.Error(), "Please check your input")
-            } else {
-                utils.InternalServerError(w, "Failed to create post")
-            }
-        }
+        utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
         return
     }
 
-    utils.Created(w, response.Message, response.Post)
+    utils.SuccessResponse(c, http.StatusCreated, "Example created successfully", example)
 }
 
-// @Summary Get a post by ID
-// @Description Get a specific post by its ID
-// @Tags posts
+// @Summary Get example
+// @Description Get example by ID
+// @Tags examples
 // @Produce json
-// @Param id path int true "Post ID"
-// @Success 200 {object} controllers.PostControllerResponse
-// @Failure 404 {object} utils.ErrorResponse
-// @Router /api/posts/{id} [get]
-func GetPost(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    id, err := strconv.Atoi(vars["id"])
+// @Param id path int true "Example ID"
+// @Success 200 {object} utils.Response{data=models.ExampleResponse}
+// @Failure 404 {object} utils.Response
+// @Security BearerAuth
+// @Router /api/examples/{id} [get]
+func (ctrl *ExampleController) GetExample(c *gin.Context) {
+    userID := c.GetUint("user_id")
+
+    id, err := strconv.ParseUint(c.Param("id"), 10, 32)
     if err != nil {
-        utils.BadRequest(w, "Invalid post ID", "Post ID must be a number")
+        utils.ErrorResponse(c, http.StatusBadRequest, "Invalid example ID", nil)
         return
     }
 
-    response, err := postController.GetPost(id)
+    example, err := ctrl.exampleService.GetExample(uint(id), userID)
     if err != nil {
-        switch err.Error() {
-        case "post not found":
-            utils.NotFound(w, "Post not found")
-        default:
-            utils.InternalServerError(w, "Failed to retrieve post")
-        }
+        utils.ErrorResponse(c, http.StatusNotFound, err.Error(), nil)
         return
     }
 
-    utils.Success(w, "Post retrieved successfully", response.Post)
+    utils.SuccessResponse(c, http.StatusOK, "Example retrieved successfully", example)
 }
 
-// @Summary Update a post
-// @Description Update a post owned by the authenticated user
-// @Tags posts
+// @Summary List user examples
+// @Description Get paginated list of user's examples
+// @Tags examples
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(10)
+// @Success 200 {object} utils.Response{data=object}
+// @Security BearerAuth
+// @Router /api/examples [get]
+func (ctrl *ExampleController) GetUserExamples(c *gin.Context) {
+    userID := c.GetUint("user_id")
+
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+    if page < 1 {
+        page = 1
+    }
+    if limit < 1 || limit > 100 {
+        limit = 10
+    }
+
+    examples, total, err := ctrl.exampleService.GetUserExamples(userID, page, limit)
+    if err != nil {
+        utils.ErrorResponse(c, http.StatusInternalServerError, err.Error(), nil)
+        return
+    }
+
+    response := map[string]interface{}{
+        "examples": examples,
+        "total":    total,
+        "page":     page,
+        "limit":    limit,
+    }
+
+    utils.SuccessResponse(c, http.StatusOK, "Examples retrieved successfully", response)
+}
+
+// @Summary Update example
+// @Description Update example by ID
+// @Tags examples
 // @Accept json
 // @Produce json
-// @Param id path int true "Post ID"
-// @Param post body models.UpdatePostRequest true "Updated post data"
-// @Success 200 {object} controllers.PostControllerResponse
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 401 {object} utils.ErrorResponse
-// @Failure 403 {object} utils.ErrorResponse
-// @Failure 404 {object} utils.ErrorResponse
+// @Param id path int true "Example ID"
+// @Param request body models.UpdateExampleRequest true "Update data"
+// @Success 200 {object} utils.Response{data=models.ExampleResponse}
+// @Failure 400 {object} utils.Response
+// @Failure 404 {object} utils.Response
 // @Security BearerAuth
-// @Router /api/posts/{id} [put]
-func UpdatePost(w http.ResponseWriter, r *http.Request) {
-    claims := r.Context().Value("user").(*utils.Claims)
-    vars := mux.Vars(r)
-    id, err := strconv.Atoi(vars["id"])
+// @Router /api/examples/{id} [put]
+func (ctrl *ExampleController) UpdateExample(c *gin.Context) {
+    userID := c.GetUint("user_id")
+
+    id, err := strconv.ParseUint(c.Param("id"), 10, 32)
     if err != nil {
-        utils.BadRequest(w, "Invalid post ID", "Post ID must be a number")
+        utils.ErrorResponse(c, http.StatusBadRequest, "Invalid example ID", nil)
         return
     }
 
-    var req models.UpdatePostRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        utils.BadRequest(w, "Invalid request body", "Failed to parse JSON request")
+    var req models.UpdateExampleRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        utils.ErrorResponse(c, http.StatusBadRequest, "Invalid request data", err)
         return
     }
 
-    response, err := postController.UpdatePost(id, claims.UserID, req)
+    // Validate request
+    if err := utils.ValidateStruct(req); err != nil {
+        utils.ValidationErrorResponse(c, err)
+        return
+    }
+
+    example, err := ctrl.exampleService.UpdateExample(uint(id), userID, req)
     if err != nil {
-        switch err.Error() {
-        case "post not found":
-            utils.NotFound(w, "Post not found")
-        case "unauthorized":
-            utils.Forbidden(w, "You can only update your own posts")
-        default:
-            if contains(err.Error(), "validation failed") {
-                utils.ValidationError(w, err.Error(), "Please check your input")
-            } else {
-                utils.InternalServerError(w, "Failed to update post")
-            }
-        }
+        utils.ErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
         return
     }
 
-    utils.Success(w, response.Message, response.Post)
+    utils.SuccessResponse(c, http.StatusOK, "Example updated successfully", example)
 }
 
-// @Summary Delete a post
-// @Description Delete a post owned by the authenticated user
-// @Tags posts
-// @Produce json
-// @Param id path int true "Post ID"
-// @Success 200 {object} controllers.PostControllerResponse
-// @Failure 401 {object} utils.ErrorResponse
-// @Failure 403 {object} utils.ErrorResponse
-// @Failure 404 {object} utils.ErrorResponse
+// @Summary Delete example
+// @Description Delete example by ID
+// @Tags examples
+// @Param id path int true "Example ID"
+// @Success 200 {object} utils.Response
+// @Failure 404 {object} utils.Response
 // @Security BearerAuth
-// @Router /api/posts/{id} [delete]
-func DeletePost(w http.ResponseWriter, r *http.Request) {
-    claims := r.Context().Value("user").(*utils.Claims)
-    vars := mux.Vars(r)
-    id, err := strconv.Atoi(vars["id"])
+// @Router /api/examples/{id} [delete]
+func (ctrl *ExampleController) DeleteExample(c *gin.Context) {
+    userID := c.GetUint("user_id")
+
+    id, err := strconv.ParseUint(c.Param("id"), 10, 32)
     if err != nil {
-        utils.BadRequest(w, "Invalid post ID", "Post ID must be a number")
+        utils.ErrorResponse(c, http.StatusBadRequest, "Invalid example ID", nil)
         return
     }
 
-    response, err := postController.DeletePost(id, claims.UserID)
-    if err != nil {
-        switch err.Error() {
-        case "post not found":
-            utils.NotFound(w, "Post not found")
-        case "unauthorized":
-            utils.Forbidden(w, "You can only delete your own posts")
-        default:
-            utils.InternalServerError(w, "Failed to delete post")
-        }
+    if err := ctrl.exampleService.DeleteExample(uint(id), userID); err != nil {
+        utils.ErrorResponse(c, http.StatusNotFound, err.Error(), nil)
         return
     }
 
-    utils.Success(w, response.Message, nil)
-}
-
-// Helper function
-func contains(s, substr string) bool {
-    return len(s) >= len(substr) && s[:len(substr)] == substr
+    utils.SuccessResponse(c, http.StatusOK, "Example deleted successfully", nil)
 }
 ```
 
-### 6. Create Routes
+### 5. Create Routes
 
-Define URL routes in `routes/`.
+Create routes in `routes/` directory:
 
 ```go
-// routes/post.go
+// routes/example.go
 package routes
 
 import (
-    "auth-jwt/handlers"
+    "auth-jwt/controllers"
     "auth-jwt/middleware"
 
-    "github.com/gorilla/mux"
+    "github.com/gin-gonic/gin"
 )
 
-func SetupPostRoutes(r *mux.Router) {
-    // Public routes
-    r.HandleFunc("/posts/{id:[0-9]+}", handlers.GetPost).Methods("GET")
-    r.HandleFunc("/posts", handlers.GetPublishedPosts).Methods("GET")
-
-    // Protected routes
-    protected := r.PathPrefix("/posts").Subrouter()
-    protected.Use(middleware.AuthMiddleware)
-
-    protected.HandleFunc("", handlers.CreatePost).Methods("POST")
-    protected.HandleFunc("/{id:[0-9]+}", handlers.UpdatePost).Methods("PUT")
-    protected.HandleFunc("/{id:[0-9]+}", handlers.DeletePost).Methods("DELETE")
-    protected.HandleFunc("/my", handlers.GetMyPosts).Methods("GET")
+func SetupExampleRoutes(router *gin.RouterGroup, exampleController *controllers.ExampleController) {
+    examples := router.Group("/examples")
+    examples.Use(middleware.AuthMiddleware()) // Require authentication
+    {
+        examples.POST("", exampleController.CreateExample)
+        examples.GET("", exampleController.GetUserExamples)
+        examples.GET("/:id", exampleController.GetExample)
+        examples.PUT("/:id", exampleController.UpdateExample)
+        examples.DELETE("/:id", exampleController.DeleteExample)
+    }
 }
 ```
 
-### 7. Update Main Routes
+### 6. Update Main Application
 
-Add your new routes to the main router.
-
-```go
-// routes/routes.go - Add to SetupRoutes function
-func SetupRoutes() *mux.Router {
-    r := mux.NewRouter()
-
-    // Existing routes...
-    SetupAuthRoutes(r.PathPrefix("/auth").Subrouter())
-    SetupUserRoutes(r.PathPrefix("/api/user").Subrouter())
-
-    // Add new routes
-    SetupPostRoutes(r.PathPrefix("/api/posts").Subrouter())
-
-    return r
-}
-```
-
-### 8. Update Main.go
-
-Initialize your new components in main.go.
+Update `main.go` to wire up the new feature:
 
 ```go
-// main.go - Add to main function
+// Add to main.go
 func main() {
     // ... existing code ...
 
     // Initialize repositories
-    userRepo := repositories.NewUserRepository(database.DB)
-    authRepo := repositories.NewAuthRepository(database.DB)
-    postRepo := repositories.NewPostRepository(database.DB) // Add this
+    exampleRepo := repositories.NewExampleRepository(database.GetDB())
 
     // Initialize services
-    userService := services.NewUserService(userRepo)
-    authService := services.NewAuthService(userRepo, authRepo)
-    postService := services.NewPostService(postRepo, userRepo) // Add this
+    exampleService := services.NewExampleService(exampleRepo, userRepo)
 
     // Initialize controllers
-    userController := controllers.NewUserController(userService)
-    authController := controllers.NewAuthController(authService)
-    postController := controllers.NewPostController(postService) // Add this
+    exampleController := controllers.NewExampleController(exampleService)
 
-    // Set controllers in handlers
-    handlers.SetUserController(userController)
-    handlers.SetAuthController(authController)
-    handlers.SetPostController(postController) // Add this
+    // Setup routes
+    api := router.Group("/api")
+    routes.SetupExampleRoutes(api, exampleController)
 
     // ... rest of the code ...
 }
 ```
 
-### 9. Update Database Migration
+### 7. Update Database Migration
 
-Add your new model to the auto-migration.
+Add the new model to `database/db.go`:
 
 ```go
-// database/db.go - Update AutoMigrate function
+// Update AutoMigrate function
 func AutoMigrate() error {
     err := DB.AutoMigrate(
         &models.User{},
         &models.PasswordResetToken{},
         &models.LoginAttempt{},
-        &models.Post{}, // Add this
+        &models.File{},
+        &models.Example{}, // Add new model
     )
 
     if err != nil {
@@ -648,120 +554,268 @@ func AutoMigrate() error {
 }
 ```
 
-## 🧪 Testing Your New Feature
+## Transaction Best Practices
 
-### 1. Test with cURL
+### When to Use Transactions
 
-```bash
-# Create a post
-curl -X POST http://localhost:8080/api/posts \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{"title":"My First Post","content":"This is the content of my post"}'
+1. **Always use transactions for write operations** (Create, Update, Delete)
+2. **Use service-level transactions** for operations spanning multiple repositories
+3. **Keep read operations outside transactions** for better performance
+4. **Validate data before starting transactions** to avoid unnecessary rollbacks
+5. **Use transactions for operations that must be atomic** (all succeed or all fail)
 
-# Get a post
-curl -X GET http://localhost:8080/api/posts/1
+### Transaction Patterns
 
-# Update a post
-curl -X PUT http://localhost:8080/api/posts/1 \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{"title":"Updated Title","published":true}'
-
-# Delete a post
-curl -X DELETE http://localhost:8080/api/posts/1 \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-
-### 2. Update Swagger Documentation
-
-Run swagger generation to update API docs:
-
-```bash
-swag init
-```
-
-## 📝 Best Practices
-
-### 1. Error Handling
-
-- Use consistent error messages
-- Return appropriate HTTP status codes
-- Log errors for debugging
-
-### 2. Validation
-
-- Validate all input data
-- Use struct tags for validation rules
-- Return clear validation error messages
-
-### 3. Security
-
-- Always validate user permissions
-- Use middleware for authentication
-- Sanitize input data
-
-### 4. Database
-
-- Use transactions for complex operations
-- Add proper indexes for performance
-- Use soft deletes when appropriate
-
-### 5. Testing
-
-- Write unit tests for services
-- Test error scenarios
-- Use integration tests for handlers
-
-### 6. Documentation
-
-- Add Swagger comments to handlers
-- Update API documentation
-- Document business logic in services
-
-## 🔧 Common Patterns
-
-### Pagination
+#### Repository Level (Simple Operations)
 
 ```go
-type PaginationRequest struct {
-    Page  int `json:"page" validate:"min=1"`
-    Limit int `json:"limit" validate:"min=1,max=100"`
+func (r *Repository) Create(entity *Model) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Create(entity).Error
+    })
 }
 
-func (s *PostService) GetPaginatedPosts(req PaginationRequest) ([]*models.PostResponse, *PaginationMeta, error) {
-    offset := (req.Page - 1) * req.Limit
-    posts, err := s.postRepo.GetPublished(req.Limit, offset)
-    // ... implementation
+func (r *Repository) Update(entity *Model) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Save(entity).Error
+    })
+}
+
+func (r *Repository) Delete(id uint) error {
+    return r.db.Transaction(func(tx *gorm.DB) error {
+        return tx.Delete(&Model{}, id).Error
+    })
 }
 ```
 
-### Search and Filtering
+#### Service Level (Complex Operations)
 
 ```go
-type PostFilter struct {
-    UserID    *uint   `json:"user_id,omitempty"`
-    Published *bool   `json:"published,omitempty"`
-    Search    *string `json:"search,omitempty"`
+func (s *Service) ComplexOperation(data Data) error {
+    // Validate outside transaction
+    if err := s.validateData(data); err != nil {
+        return err
+    }
+
+    db := s.getDB()
+    return db.Transaction(func(tx *gorm.DB) error {
+        // Multiple operations that must succeed together
+        if err := tx.Create(&entity1).Error; err != nil {
+            return err
+        }
+
+        if err := tx.Model(&entity2).Where("id = ?", data.ID).Update("status", "updated").Error; err != nil {
+            return err
+        }
+
+        // Delete related records
+        if err := tx.Where("parent_id = ?", entity1.ID).Delete(&RelatedModel{}).Error; err != nil {
+            return err
+        }
+
+        return nil
+    })
 }
 
-func (r *PostRepository) GetWithFilter(filter PostFilter, limit, offset int) ([]*models.Post, error) {
-    query := r.db.Model(&models.Post{})
-
-    if filter.UserID != nil {
-        query = query.Where("user_id = ?", *filter.UserID)
-    }
-    if filter.Published != nil {
-        query = query.Where("published = ?", *filter.Published)
-    }
-    if filter.Search != nil {
-        query = query.Where("title ILIKE ? OR content ILIKE ?", "%"+*filter.Search+"%", "%"+*filter.Search+"%")
-    }
-
-    var posts []*models.Post
-    err := query.Limit(limit).Offset(offset).Find(&posts).Error
-    return posts, err
+// Helper method to get DB instance
+func (s *Service) getDB() *gorm.DB {
+    return database.GetDB()
 }
 ```
 
-This guide provides a complete template for adding new features while maintaining the clean architecture and consistency of your JWT authentication API.
+#### Advanced Transaction Patterns
+
+**File Operations with Database Consistency:**
+
+```go
+func (s *FileService) UploadWithMetadata(file FileData, metadata Metadata) error {
+    // Save file first
+    filePath, err := s.saveFile(file)
+    if err != nil {
+        return err
+    }
+
+    // Use transaction for database operations
+    db := s.getDB()
+    err = db.Transaction(func(tx *gorm.DB) error {
+        // Create file record
+        fileRecord := &models.File{
+            Path: filePath,
+            Name: file.Name,
+        }
+        if err := tx.Create(fileRecord).Error; err != nil {
+            return err
+        }
+
+        // Create metadata record
+        metadataRecord := &models.FileMetadata{
+            FileID: fileRecord.ID,
+            Data:   metadata,
+        }
+        if err := tx.Create(metadataRecord).Error; err != nil {
+            return err
+        }
+
+        return nil
+    })
+
+    // Clean up file if database transaction failed
+    if err != nil {
+        os.Remove(filePath)
+        return err
+    }
+
+    return nil
+}
+```
+
+**Batch Operations with Transaction:**
+
+```go
+func (s *Service) BatchUpdate(items []UpdateItem) error {
+    if len(items) == 0 {
+        return nil
+    }
+
+    db := s.getDB()
+    return db.Transaction(func(tx *gorm.DB) error {
+        for _, item := range items {
+            if err := tx.Model(&Model{}).Where("id = ?", item.ID).Updates(item.Data).Error; err != nil {
+                return err // This will rollback all previous updates
+            }
+        }
+        return nil
+    })
+}
+```
+
+### Transaction Error Handling
+
+```go
+func (s *Service) SafeOperation(data Data) error {
+    db := s.getDB()
+    return db.Transaction(func(tx *gorm.DB) error {
+        // Operation 1
+        if err := tx.Create(&entity1).Error; err != nil {
+            // Log specific error
+            log.Printf("Failed to create entity1: %v", err)
+            return fmt.Errorf("failed to create primary record: %w", err)
+        }
+
+        // Operation 2
+        if err := tx.Create(&entity2).Error; err != nil {
+            log.Printf("Failed to create entity2: %v", err)
+            return fmt.Errorf("failed to create secondary record: %w", err)
+        }
+
+        // Validation after operations
+        if !s.validateBusinessRules(entity1, entity2) {
+            return errors.New("business rule validation failed")
+        }
+
+        return nil
+    })
+}
+```
+
+### Performance Considerations
+
+1. **Keep transactions short** - Long transactions hold locks longer
+2. **Validate before transactions** - Avoid rollbacks when possible
+3. **Use read replicas for queries** - Don't include reads in write transactions
+4. **Batch operations efficiently** - Group related operations
+
+```go
+// Good: Validate first, then transact
+func (s *Service) EfficientCreate(data Data) error {
+    // Validate outside transaction
+    if err := s.validate(data); err != nil {
+        return err
+    }
+
+    // Check business rules outside transaction
+    if exists, err := s.checkExists(data.Key); err != nil {
+        return err
+    } else if exists {
+        return errors.New("already exists")
+    }
+
+    // Short transaction for actual write
+    return s.repo.Create(&Model{Data: data})
+}
+
+// Bad: Long transaction with validation inside
+func (s *Service) InefficientCreate(data Data) error {
+    db := s.getDB()
+    return db.Transaction(func(tx *gorm.DB) error {
+        // This holds locks while validating
+        if err := s.validate(data); err != nil {
+            return err
+        }
+
+        var existing Model
+        if err := tx.Where("key = ?", data.Key).First(&existing).Error; err == nil {
+            return errors.New("already exists")
+        }
+
+        return tx.Create(&Model{Data: data}).Error
+    })
+}
+```
+
+## Testing Your Feature
+
+### Unit Tests
+
+Create tests in `*_test.go` files:
+
+```go
+// services/example_service_test.go
+package services
+
+import (
+    "testing"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
+)
+
+func TestExampleService_CreateExample(t *testing.T) {
+    // Test implementation
+}
+```
+
+### Integration Tests
+
+Test the complete flow from HTTP request to database:
+
+```go
+func TestExampleAPI_CreateExample(t *testing.T) {
+    // Setup test database
+    // Make HTTP request
+    // Assert response
+    // Verify database state
+}
+```
+
+## Documentation
+
+1. **Update Swagger comments** for API documentation
+2. **Add examples to API documentation**
+3. **Update README.md** with new endpoints
+4. **Create feature-specific documentation** if needed
+
+## Checklist
+
+- [ ] Model created with proper validation tags
+- [ ] Repository interface and implementation with transactions
+- [ ] Service layer with business logic
+- [ ] Controller with proper error handling
+- [ ] Routes with authentication middleware
+- [ ] Database migration updated
+- [ ] Main application wired up
+- [ ] Swagger documentation added
+- [ ] Tests written
+- [ ] README updated
+- [ ] API examples documented
+
+Following this guide ensures your new features integrate seamlessly with the existing architecture and maintain the same quality standards.

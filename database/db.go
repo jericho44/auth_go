@@ -1,48 +1,74 @@
 package database
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 
 	"auth-jwt/config"
+	"auth-jwt/models"
 
-	_ "github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-var DB *sql.DB
+var DB *gorm.DB
 
 func Connect(cfg *config.Config) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode)
 
 	var err error
-	DB, err = sql.Open("postgres", dsn)
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	if err = DB.Ping(); err != nil {
+	// Get underlying sql.DB to configure connection pool
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatal("Failed to get underlying sql.DB:", err)
+	}
+
+	// Configure connection pool
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+
+	// Test connection
+	if err = sqlDB.Ping(); err != nil {
 		log.Fatal("Failed to ping database:", err)
 	}
 
 	log.Println("Connected to database successfully")
-	createTables()
+
+	// Auto-migrate models
+	if err := AutoMigrate(); err != nil {
+		log.Printf("Auto-migration warning: %v", err)
+	}
 }
 
-func createTables() {
-	query := `
-	CREATE TABLE IF NOT EXISTS users (
-		id SERIAL PRIMARY KEY,
-		username VARCHAR(50) UNIQUE NOT NULL,
-		email VARCHAR(100) UNIQUE NOT NULL,
-		password VARCHAR(255) NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	)`
+// AutoMigrate runs GORM auto-migration for all models
+func AutoMigrate() error {
+	// log.Println("Running GORM auto-migration...")
 
-	if _, err := DB.Exec(query); err != nil {
-		log.Fatal("Failed to create users table:", err)
+	err := DB.AutoMigrate(
+		&models.User{},
+		&models.PasswordResetToken{},
+		&models.LoginAttempt{},
+		&models.File{},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to auto-migrate: %w", err)
 	}
 
-	log.Println("Database tables created successfully")
+	// log.Println("GORM auto-migration completed successfully")
+	return nil
+}
+
+// GetDB returns the GORM database instance
+func GetDB() *gorm.DB {
+	return DB
 }

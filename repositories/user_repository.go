@@ -40,8 +40,10 @@ func NewUserRepository(db *gorm.DB) UserRepositoryInterface {
 
 // Create inserts a new user into the database
 func (ur *UserRepository) Create(user *models.User) error {
-	result := ur.db.Create(user)
-	return result.Error
+	return ur.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Create(user)
+		return result.Error
+	})
 }
 
 // GetByID retrieves a user by their ID
@@ -76,20 +78,30 @@ func (ur *UserRepository) GetByEmail(email string) (*models.User, error) {
 
 // Update updates a user's information
 func (ur *UserRepository) Update(user *models.User) error {
-	result := ur.db.Save(user)
-	return result.Error
+	return ur.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Save(user)
+		return result.Error
+	})
 }
 
 // UpdateProfile updates a user's profile information
 func (ur *UserRepository) UpdateProfile(userID uint, email string) (*models.User, error) {
 	var user models.User
-	result := ur.db.Model(&user).Where("id = ?", userID).Update("email", email)
-	if result.Error != nil {
-		return nil, result.Error
-	}
+	err := ur.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&user).Where("id = ?", userID).Update("email", email)
+		if result.Error != nil {
+			return result.Error
+		}
 
-	// Fetch updated user
-	if err := ur.db.First(&user, userID).Error; err != nil {
+		// Fetch updated user
+		if err := tx.First(&user, userID).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -98,14 +110,18 @@ func (ur *UserRepository) UpdateProfile(userID uint, email string) (*models.User
 
 // UpdatePassword updates a user's password
 func (ur *UserRepository) UpdatePassword(userID uint, hashedPassword string) error {
-	result := ur.db.Model(&models.User{}).Where("id = ?", userID).Update("password", hashedPassword)
-	return result.Error
+	return ur.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&models.User{}).Where("id = ?", userID).Update("password", hashedPassword)
+		return result.Error
+	})
 }
 
 // Delete soft deletes a user (GORM soft delete)
 func (ur *UserRepository) Delete(userID uint) error {
-	result := ur.db.Delete(&models.User{}, userID)
-	return result.Error
+	return ur.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Delete(&models.User{}, userID)
+		return result.Error
+	})
 }
 
 // Exists checks if a user with the given username or email already exists

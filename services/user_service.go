@@ -35,7 +35,7 @@ func NewUserService(userRepo repositories.UserRepositoryInterface) UserServiceIn
 
 // CreateUser creates a new user with validation
 func (us *UserService) CreateUser(username, email, password string) (*models.User, error) {
-	// Check if user already exists
+	// Check if user already exists (outside transaction for validation)
 	exists, err := us.userRepo.Exists(username, email)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (us *UserService) CreateUser(username, email, password string) (*models.Use
 		Password: password,
 	}
 
-	// Save to database
+	// Save to database with transaction (already implemented in repository)
 	if err := us.userRepo.Create(user); err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (us *UserService) UpdateUserProfile(userID uint, email string) (*models.Use
 
 // UpdateUserPassword updates user password
 func (us *UserService) UpdateUserPassword(userID uint, newPassword string) error {
-	// Check if user exists
+	// Check if user exists (outside transaction for validation)
 	user, err := us.userRepo.GetByID(userID)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func (us *UserService) UpdateUserPassword(userID uint, newPassword string) error
 		return err
 	}
 
-	// Update password
+	// Update password with transaction (already implemented in repository)
 	return us.userRepo.UpdatePassword(userID, tempUser.Password)
 }
 

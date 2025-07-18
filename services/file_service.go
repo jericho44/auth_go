@@ -11,8 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"auth-jwt/database"
 	"auth-jwt/models"
 	"auth-jwt/repositories"
+
+	"gorm.io/gorm"
 )
 
 type FileServiceInterface interface {
@@ -75,7 +78,7 @@ func (s *FileService) UploadSingleFile(userID uint, fileHeader *multipart.FileHe
 		return nil, errors.New("failed to save file")
 	}
 
-	// Create file record
+	// Create file record with transaction to ensure atomicity
 	file := &models.File{
 		OriginalName: fileHeader.Filename,
 		FileName:     fileName,
@@ -87,7 +90,13 @@ func (s *FileService) UploadSingleFile(userID uint, fileHeader *multipart.FileHe
 		IsPublic:     false,
 	}
 
-	if err := s.fileRepo.Create(file); err != nil {
+	// Use transaction to ensure file record is saved atomically
+	db := s.getDB()
+	err = db.Transaction(func(tx *gorm.DB) error {
+		return tx.Create(file).Error
+	})
+
+	if err != nil {
 		// Clean up file if database save fails
 		os.Remove(filePath)
 		return nil, errors.New("failed to save file record")
@@ -215,14 +224,22 @@ func (s *FileService) DeleteFile(id, userID uint) error {
 		return errors.New("unauthorized")
 	}
 
-	// Delete file from disk
-	if err := os.Remove(file.FilePath); err != nil {
-		// Log error but don't fail the operation
-		fmt.Printf("Warning: Failed to delete file from disk: %v\n", err)
-	}
+	// Use transaction to ensure atomic deletion
+	db := s.getDB()
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Delete from database first
+		if err := tx.Delete(&models.File{}, id).Error; err != nil {
+			return err
+		}
 
-	// Delete from database
-	return s.fileRepo.Delete(id)
+		// Delete file from disk after successful DB deletion
+		if err := os.Remove(file.FilePath); err != nil {
+			// Log error but don't fail the transaction since DB is already updated
+			fmt.Printf("Warning: Failed to delete file from disk: %v\n", err)
+		}
+
+		return nil
+	})
 }
 
 func (s *FileService) GetFileByName(fileName string) (*models.File, error) {
@@ -317,4 +334,9 @@ func (s *FileService) convertToResponse(file *models.File) *models.FileUploadRes
 		IsPublic:     file.IsPublic,
 		CreatedAt:    file.CreatedAt,
 	}
+}
+
+// getDB returns the database instance for transactions
+func (s *FileService) getDB() *gorm.DB {
+	return database.GetDB()
 }

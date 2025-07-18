@@ -33,13 +33,15 @@ func NewAuthRepository(db *gorm.DB) AuthRepositoryInterface {
 
 // CreatePasswordResetToken stores a password reset token
 func (ar *AuthRepository) CreatePasswordResetToken(userID uint, token string, expiresAt time.Time) error {
-	resetToken := &models.PasswordResetToken{
-		UserID:    userID,
-		Token:     token,
-		ExpiresAt: expiresAt,
-	}
-	result := ar.db.Create(resetToken)
-	return result.Error
+	return ar.db.Transaction(func(tx *gorm.DB) error {
+		resetToken := &models.PasswordResetToken{
+			UserID:    userID,
+			Token:     token,
+			ExpiresAt: expiresAt,
+		}
+		result := tx.Create(resetToken)
+		return result.Error
+	})
 }
 
 // GetPasswordResetToken retrieves a password reset token
@@ -54,26 +56,32 @@ func (ar *AuthRepository) GetPasswordResetToken(token string) (*models.PasswordR
 
 // DeletePasswordResetToken removes a password reset token
 func (ar *AuthRepository) DeletePasswordResetToken(token string) error {
-	result := ar.db.Where("token = ?", token).Delete(&models.PasswordResetToken{})
-	return result.Error
+	return ar.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("token = ?", token).Delete(&models.PasswordResetToken{})
+		return result.Error
+	})
 }
 
 // CleanupExpiredTokens removes expired password reset tokens
 func (ar *AuthRepository) CleanupExpiredTokens() error {
-	result := ar.db.Where("expires_at <= ?", time.Now()).Delete(&models.PasswordResetToken{})
-	return result.Error
+	return ar.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("expires_at <= ?", time.Now()).Delete(&models.PasswordResetToken{})
+		return result.Error
+	})
 }
 
 // CreateLoginAttempt logs a login attempt
 func (ar *AuthRepository) CreateLoginAttempt(username, ipAddress string, success bool) error {
-	attempt := &models.LoginAttempt{
-		Username:    username,
-		IPAddress:   ipAddress,
-		Success:     success,
-		AttemptedAt: time.Now(),
-	}
-	result := ar.db.Create(attempt)
-	return result.Error
+	return ar.db.Transaction(func(tx *gorm.DB) error {
+		attempt := &models.LoginAttempt{
+			Username:    username,
+			IPAddress:   ipAddress,
+			Success:     success,
+			AttemptedAt: time.Now(),
+		}
+		result := tx.Create(attempt)
+		return result.Error
+	})
 }
 
 // GetRecentLoginAttempts gets the number of recent login attempts for a username

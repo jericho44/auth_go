@@ -27,7 +27,9 @@ func NewFileRepository(db *gorm.DB) FileRepositoryInterface {
 }
 
 func (r *FileRepository) Create(file *models.File) error {
-	return r.db.Create(file).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Create(file).Error
+	})
 }
 
 func (r *FileRepository) GetByID(id uint) (*models.File, error) {
@@ -68,11 +70,15 @@ func (r *FileRepository) GetPublicFiles(limit, offset int) ([]*models.File, erro
 }
 
 func (r *FileRepository) Update(file *models.File) error {
-	return r.db.Save(file).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Save(file).Error
+	})
 }
 
 func (r *FileRepository) Delete(id uint) error {
-	return r.db.Delete(&models.File{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.Delete(&models.File{}, id).Error
+	})
 }
 
 func (r *FileRepository) CountByUserID(userID uint) (int64, error) {

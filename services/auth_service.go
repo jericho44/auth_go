@@ -6,9 +6,12 @@ import (
 	"errors"
 	"time"
 
+	"auth-jwt/database"
 	"auth-jwt/models"
 	"auth-jwt/repositories"
 	"auth-jwt/utils"
+
+	"gorm.io/gorm"
 )
 
 // AuthServiceInterface defines the contract for authentication business operations
@@ -117,7 +120,7 @@ func (as *AuthService) GeneratePasswordResetToken(email string) (string, error) 
 
 // ResetPassword resets user password using token
 func (as *AuthService) ResetPassword(token, newPassword string) error {
-	// Get reset token
+	// Get reset token first (outside transaction for validation)
 	resetToken, err := as.authRepo.GetPasswordResetToken(token)
 	if err != nil {
 		return err
@@ -132,17 +135,29 @@ func (as *AuthService) ResetPassword(token, newPassword string) error {
 		return err
 	}
 
-	// Update user password
-	if err := as.userRepo.UpdatePassword(resetToken.UserID, tempUser.Password); err != nil {
-		return err
-	}
+	// Perform password update and token deletion in a single transaction
+	// We need to access the underlying DB for transaction
+	db := as.getUserDB()
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Update user password
+		if err := tx.Model(&models.User{}).Where("id = ?", resetToken.UserID).Update("password", tempUser.Password).Error; err != nil {
+			return err
+		}
 
-	// Delete used token
-	if err := as.authRepo.DeletePasswordResetToken(token); err != nil {
-		return err
-	}
+		// Delete used token
+		if err := tx.Where("token = ?", token).Delete(&models.PasswordResetToken{}).Error; err != nil {
+			return err
+		}
 
-	return nil
+		return nil
+	})
+}
+
+// Helper method to get DB instance (we'll need to add this)
+func (as *AuthService) getUserDB() *gorm.DB {
+	// This is a temporary solution - in a real implementation, you'd inject the DB
+	// For now, we'll use the global DB instance
+	return database.GetDB()
 }
 
 // ValidateLoginAttempts checks for too many failed login attempts
